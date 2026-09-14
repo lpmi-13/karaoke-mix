@@ -1,0 +1,37 @@
+# Frontend dependencies and generated build output
+/node_modules/
+/dist/
+*.tsbuildinfo
+
+# Offline catalog inputs and derived pipeline data. The versioned catalog JSON
+# is the only generated data file consumed directly by the browser application.
+/data/
+/public/catalog/*
+!/public/catalog/songs.v1.json
+
+# Test and temporary output
+/.tmp/
+/test-results/
+/playwright-report/
+/coverage/
+
+# Python environments, bytecode, and tool caches
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Machine-local files and secrets
+.DS_Store
+.env
+.env.*
+!.env.example
+notes.txt
+
+*.md
+!README.md

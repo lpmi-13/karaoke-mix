@@ -1,0 +1,122 @@
+# Beatmatch
+
+Beatmatch is a browser-only song-tempo matcher. It loads a versioned static
+catalog, searches it locally, and compares automatic BPM estimates in exact
+(±0.5%), flexible (±2%), and exploratory (±5%) bands. It does not fetch music
+metadata at runtime or host audio, lyrics, artwork, or provider media.
+
+The repository also contains the reproducible offline pipeline that builds the
+5,000-song catalog described in `SONG_PICK_PLAN.md`.
+
+## Run the web application
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run build` produces the frontend bundle in `dist/`. The checked-in
+`public/catalog/songs.v1.json` is an 18-row illustrative development fixture;
+the full offline build replaces it atomically.
+
+`public/_headers` marks versioned catalogs as one-year immutable assets on
+hosts that support that convention. Production hosting should enable Brotli or
+gzip for JSON responses.
+
+## Build the catalog
+
+Python 3.10 or newer is required. Catalog dependencies are deliberately kept
+separate from the frontend install because the source archives occupy several
+gigabytes.
+
+The pinned snapshots are roughly 11 GB compressed in total. Allow substantial
+additional temporary space while the selected MusicBrainz core tables are
+streamed out and filtered into DuckDB.
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-catalog.txt
+
+python -m song_pick download
+python -m song_pick build
+python -m song_pick validate
+python -m song_pick export
+```
+
+If ListenBrainz requires an authenticated popularity request, export a user
+token as `LISTENBRAINZ_TOKEN`. The token is read from the environment and is
+never written to the database, reports, or source manifest.
+
+The pinned AcousticBrainz rhythm dump, MusicBrainz core/canonical snapshots,
+checksums, scoring thresholds, artist cap,
+and match-density rules are in `song_pick/config.v1.json`. To publish a refresh,
+copy that file to a new version, update its pinned snapshots and output version,
+run the full build and validation, and then update the frontend catalog URL.
+The exporter refuses to overwrite a different, non-fixture catalog at the same
+version.
+
+Useful options:
+
+```bash
+# Download or verify one archive only.
+python -m song_pick download --source acousticbrainz-rhythm
+
+# Resume completed import stages and cached popularity batches (the default).
+# The build uses one DuckDB worker thread and at most 4 GB of DuckDB memory.
+python -m song_pick build
+
+# Adjust the resource limits for the current machine when needed.
+python -m song_pick build --threads 4 --memory-limit 8GB
+
+# Intentionally rebuild stages or refresh ListenBrainz counts.
+python -m song_pick build --force --refresh-popularity
+
+# Permit fewer than 5,000 rows when documented quality rules leave too few.
+python -m song_pick build --allow-under-target
+```
+
+Long scoring stages report their row count, percentage, throughput, and ETA
+approximately every 30 seconds. Each resumable stage also reports its start and
+completion time. Scoring defers DuckDB's automatic WAL checkpoint until its
+ordered reader has closed, then reports the final checkpoint separately.
+
+Downloads use `.part` files, resume with HTTP range requests, verify SHA-256,
+and rename only after verification. Each completed build stage is fingerprinted
+in DuckDB. ListenBrainz requests use deterministic batches, a meaningful user
+agent, exponential retry for rate limits/transient failures, and per-batch
+checkpoints.
+
+Generated files:
+
+```text
+data/raw/                  downloaded source archives and source manifest
+data/work/catalog.duckdb   resumable observations and staging tables
+data/reports/catalog-build.json
+public/catalog/songs.v1.json
+public/catalog/songs.v1.meta.json
+```
+
+Raw and working data are ignored by Git. The browser JSON excludes raw tempo
+observations; those remain auditable in DuckDB.
+
+## Tests
+
+```bash
+python -m unittest discover -s tests_python -v
+npm run build
+npm run test:e2e
+```
+
+The tests cover automatic tempo scoring and octave ambiguity, deterministic
+selection and flexible-match density, catalog validation, catalog loading,
+title/artist search, all three tempo thresholds, stable ordering, source-song
+exclusion, and the visible load-error state.
+
+## Accuracy and data credits
+
+All BPM values are estimates, not musician-verified measurements. Similar BPM
+does not guarantee compatible meter, phrasing, melody, or harmony.
+
+See [DATA_PROVENANCE.md](DATA_PROVENANCE.md) for the AcousticBrainz,
+MusicBrainz, and ListenBrainz sources and licensing notice.
