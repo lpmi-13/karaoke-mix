@@ -64,6 +64,7 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
   const [sortBy, setSortBy] = useState<BrowseSort>("title");
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const results = useMemo(() => searchSongs(songs, query), [query, songs]);
   const genres = useMemo(() => getGenreOptions(songs), [songs]);
   const browsedSongs = useMemo(() => browseSongs(songs, genre, sortBy), [genre, songs, sortBy]);
@@ -84,120 +85,145 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
   }, []);
 
   return (
-    <div className="search-wrap" ref={wrapperRef}>
-      <div className={`search-box ${open ? "search-box--open" : ""}`}>
-        <Search size={21} aria-hidden="true" />
-        <input
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
+    <div className="search-wrap" id="song-picker" ref={wrapperRef}>
+      <p className="finder-label">Choose how to find a starting song</p>
+      <div className="finder-tabs" role="tablist" aria-label="Find a starting song">
+        <button
+          className={!browsing ? "active" : ""}
+          role="tab"
+          aria-selected={!browsing}
+          aria-controls="song-finder-panel"
+          onClick={() => {
             setBrowsing(false);
             setOpen(true);
+            window.requestAnimationFrame(() => inputRef.current?.focus());
           }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && results[0]) {
-              choose(results[0]);
-            }
-            if (event.key === "Escape") setOpen(false);
-          }}
-          placeholder="Search a song or artist"
-          aria-label="Search a song or artist"
-          aria-expanded={open}
-        />
-        {query ? (
-          <button className="icon-button" onClick={() => setQuery("")} aria-label="Clear search">
-            <X size={18} />
-          </button>
-        ) : (
-          <span className="key-hint">⌘ K</span>
-        )}
-      </div>
-
-      {open && (
-        <div className={`search-results ${browsing ? "search-results--browse" : ""}`}>
-          {browsing ? (
-            <>
-              <div className="browse-heading">
-                <div><span>Browse the catalog</span><strong>{browsedSongs.length.toLocaleString()} songs</strong></div>
-                <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close catalog browser"><X size={18} /></button>
-              </div>
-              <div className="browse-controls">
-                <label>
-                  <span>Genre</span>
-                  <select
-                    aria-label="Browse by genre"
-                    value={genre}
-                    onChange={(event) => {
-                      setGenre(event.target.value);
-                      setBrowseLimit(BROWSE_PAGE_SIZE);
-                    }}
-                  >
-                    <option value="">All genres</option>
-                    {genres.map((option) => <option key={option.name} value={option.name}>{genreLabel(option.name)} ({option.count.toLocaleString()})</option>)}
-                  </select>
-                </label>
-                <div className="browse-sort">
-                  <span>Order by</span>
-                  <div role="group" aria-label="Order songs by">
-                    <button className={sortBy === "title" ? "active" : ""} aria-pressed={sortBy === "title"} onClick={() => { setSortBy("title"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Song title</button>
-                    <button className={sortBy === "artist" ? "active" : ""} aria-pressed={sortBy === "artist"} onClick={() => { setSortBy("artist"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Artist</button>
-                  </div>
-                </div>
-              </div>
-              <div className="browse-list" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
-                {visibleBrowseSongs.map((song) => (
-                  <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
-                    <Artwork song={song} size="small" />
-                    <span className="search-result__copy">
-                      <strong>{song.title}</strong>
-                      <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
-                    </span>
-                    <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
-                  </button>
-                ))}
-                {visibleBrowseSongs.length < browsedSongs.length && (
-                  <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
-                    Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
-                  </button>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="search-results__label">{query ? "Best matches" : "Familiar songs"}</p>
-              <div role="listbox" aria-label="Search results">
-                {results.length ? results.map((song) => (
-                  <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
-                    <Artwork song={song} size="small" />
-                    <span className="search-result__copy">
-                      <strong>{song.title}</strong>
-                      <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
-                    </span>
-                    <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
-                  </button>
-                )) : (
-                  <div className="empty-search">No direct match. Try browsing by genre instead.</div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <div className="search-assists">
+        >
+          <Search size={17} /> Search songs
+        </button>
         <button
-          className="browse-button"
-          aria-expanded={open && browsing}
+          className={browsing ? "active" : ""}
+          role="tab"
+          aria-selected={browsing}
+          aria-controls="song-finder-panel"
           onClick={() => {
             setQuery("");
             setBrowsing(true);
             setOpen(true);
           }}
         >
-          <Library size={14} /> Browse {songs.length.toLocaleString()} songs by genre
+          <Library size={17} /> Browse genres
         </button>
-        <span>or try</span>
+      </div>
+
+      <div className="search-panel" id="song-finder-panel" role="tabpanel">
+        <div className={`search-box ${open ? "search-box--open" : ""}`}>
+          <Search size={21} aria-hidden="true" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setBrowsing(false);
+              setOpen(true);
+            }}
+            onFocus={() => {
+              setBrowsing(false);
+              setOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && results[0]) {
+                choose(results[0]);
+              }
+              if (event.key === "Escape") setOpen(false);
+            }}
+            placeholder="Search a song or artist"
+            aria-label="Search a song or artist"
+            aria-expanded={open}
+          />
+          {query ? (
+            <button className="icon-button" onClick={() => setQuery("")} aria-label="Clear search">
+              <X size={18} />
+            </button>
+          ) : (
+            <span className="key-hint">⌘ K</span>
+          )}
+        </div>
+
+        {open && (
+          <div className={`search-results ${browsing ? "search-results--browse" : ""}`}>
+            {browsing ? (
+              <>
+                <div className="browse-heading">
+                  <div><span>Browse the catalog by genre</span><strong>{browsedSongs.length.toLocaleString()} songs</strong></div>
+                  <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close catalog browser"><X size={18} /></button>
+                </div>
+                <div className="browse-controls">
+                  <label>
+                    <span>Choose a genre</span>
+                    <select
+                      aria-label="Browse by genre"
+                      value={genre}
+                      onChange={(event) => {
+                        setGenre(event.target.value);
+                        setBrowseLimit(BROWSE_PAGE_SIZE);
+                      }}
+                    >
+                      <option value="">All genres</option>
+                      {genres.map((option) => <option key={option.name} value={option.name}>{genreLabel(option.name)} ({option.count.toLocaleString()})</option>)}
+                    </select>
+                  </label>
+                  <div className="browse-sort">
+                    <span>Order by</span>
+                    <div role="group" aria-label="Order songs by">
+                      <button className={sortBy === "title" ? "active" : ""} aria-pressed={sortBy === "title"} onClick={() => { setSortBy("title"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Song title</button>
+                      <button className={sortBy === "artist" ? "active" : ""} aria-pressed={sortBy === "artist"} onClick={() => { setSortBy("artist"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Artist</button>
+                    </div>
+                  </div>
+                </div>
+                <div className="browse-list" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
+                  {visibleBrowseSongs.map((song) => (
+                    <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
+                      <Artwork song={song} size="small" />
+                      <span className="search-result__copy">
+                        <strong>{song.title}</strong>
+                        <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
+                      </span>
+                      <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
+                    </button>
+                  ))}
+                  {visibleBrowseSongs.length < browsedSongs.length && (
+                    <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
+                      Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="search-results__label">{query ? "Best matches" : "Familiar songs"}</p>
+                <div role="listbox" aria-label="Search results">
+                  {results.length ? results.map((song) => (
+                    <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
+                      <Artwork song={song} size="small" />
+                      <span className="search-result__copy">
+                        <strong>{song.title}</strong>
+                        <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
+                      </span>
+                      <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
+                    </button>
+                  )) : (
+                    <div className="empty-search">No direct match. Try browsing by genre instead.</div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="search-assists">
+        <span>Popular:</span>
         {songs.slice(0, 2).map((song) => <button key={song.id} className="quick-pick" onClick={() => choose(song)}>{song.title}</button>)}
       </div>
     </div>

@@ -47,7 +47,10 @@ test("browses a genre and toggles between song and artist ordering", async ({ pa
   await useCatalog(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Browse 7 songs by genre" }).click();
+  const browseGenres = page.getByRole("tab", { name: "Browse genres" });
+  await expect(browseGenres).toBeVisible();
+  await browseGenres.click();
+  await expect(browseGenres).toHaveAttribute("aria-selected", "true");
   await page.getByRole("combobox", { name: "Browse by genre" }).selectOption("hip hop");
   await expect(page.getByText("3 songs", { exact: true })).toBeVisible();
   await expect(page.locator(".browse-list .search-result strong").first()).toHaveText("Cole World");
