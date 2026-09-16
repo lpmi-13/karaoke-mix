@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
             from .export_catalog import export_catalog
             from .fetch_popularity import fetch_popularity
             from .import_acousticbrainz import import_acousticbrainz
-            from .import_musicbrainz import import_canonical_data, import_core_data
+            from .import_musicbrainz import import_canonical_data, import_core_data, import_genre_data
             from .pipeline import run_stage
             from .score_tempos import score_canonical_tempos, score_source_tempos
             from .select_catalog import select_catalog
@@ -91,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             run_stage(db, config, "score-source-tempos", lambda: score_source_tempos(db, config), force)
             run_stage(db, config, "import-musicbrainz-canonical", lambda: import_canonical_data(db, config, paths), force)
             run_stage(db, config, "import-musicbrainz-core", lambda: import_core_data(db, config, paths), force)
+            run_stage(db, config, "import-musicbrainz-genres", lambda: import_genre_data(db, config, paths), force)
             run_stage(db, config, "score-canonical-tempos", lambda: score_canonical_tempos(db, config), force)
             fetch_popularity(db, config, refresh=arguments.refresh_popularity)
             # Popularity includes both canonical and exact source IDs. Re-score so

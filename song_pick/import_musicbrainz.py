@@ -23,6 +23,8 @@ TITLE_QUALIFIER = re.compile(
     re.I,
 )
 CORE_MEMBERS = {
+    "artist",
+    "genre",
     "recording",
     "release",
     "release_status",
@@ -31,6 +33,7 @@ CORE_MEMBERS = {
     "release_country",
     "release_unknown_country",
 }
+GENRE_MEMBERS = {"artist_tag", "recording_tag", "release_group_tag", "tag"}
 
 
 def _format_duration(seconds: float) -> str:
@@ -499,6 +502,9 @@ def import_canonical_data(db: Any, config: Config, paths: Paths) -> None:
 
 def _extract_core_tables(archive_path: Path, work: Path) -> dict[str, Path]:
     paths = {name: work / f"musicbrainz-{name}.tsv" for name in CORE_MEMBERS}
+    if all(path.exists() and path.stat().st_mtime >= archive_path.stat().st_mtime for path in paths.values()):
+        print("core extraction: reusing completed extracted tables", flush=True)
+        return paths
     found: set[str] = set()
     print(
         f"core extraction: scanning {archive_path.name} for {len(CORE_MEMBERS)} tables",
@@ -526,9 +532,51 @@ def _extract_core_tables(archive_path: Path, work: Path) -> dict[str, Path]:
                 f"({len(found)}/{len(CORE_MEMBERS)} tables)",
                 flush=True,
             )
+            if found == CORE_MEMBERS:
+                break
     missing = CORE_MEMBERS.difference(found)
     if missing:
         raise RuntimeError(f"missing core MusicBrainz table(s): {', '.join(sorted(missing))}")
+    return paths
+
+
+def _extract_genre_tables(archive_path: Path, work: Path) -> dict[str, Path]:
+    paths = {name: work / f"musicbrainz-{name}.tsv" for name in GENRE_MEMBERS}
+    if all(path.exists() and path.stat().st_mtime >= archive_path.stat().st_mtime for path in paths.values()):
+        print("genre extraction: reusing completed extracted tables", flush=True)
+        return paths
+    found: set[str] = set()
+    print(
+        f"genre extraction: scanning {archive_path.name} for {len(GENRE_MEMBERS)} tables",
+        flush=True,
+    )
+    with open_tar(archive_path) as archive:
+        for member in archive:
+            basename = Path(member.name).name
+            if basename not in GENRE_MEMBERS or not member.isfile():
+                continue
+            binary = regular_member_file(archive, member)
+            if binary is None:
+                continue
+            temporary = paths[basename].with_suffix(".tsv.tmp")
+            print(
+                f"genre extraction: extracting {basename} ({_format_bytes(member.size)})",
+                flush=True,
+            )
+            with binary, temporary.open("wb") as output:
+                _copy_with_progress(binary, output, basename, member.size)
+            temporary.replace(paths[basename])
+            found.add(basename)
+            print(
+                f"genre extraction: extracted {basename} "
+                f"({len(found)}/{len(GENRE_MEMBERS)} tables)",
+                flush=True,
+            )
+            if found == GENRE_MEMBERS:
+                break
+    missing = GENRE_MEMBERS.difference(found)
+    if missing:
+        raise RuntimeError(f"missing MusicBrainz genre table(s): {', '.join(sorted(missing))}")
     return paths
 
 
@@ -564,6 +612,8 @@ def import_core_data(db: Any, config: Config, paths: Paths) -> None:
     with _core_step("scanning and extracting the core archive"):
         tables = _extract_core_tables(archive_path, paths.work)
     schemas = {
+        "artist": ["id", "gid", "name", "sort_name", "begin_date_year", "begin_date_month", "begin_date_day", "end_date_year", "end_date_month", "end_date_day", "type", "area", "gender", "comment", "edits_pending", "last_updated", "ended", "begin_area", "end_area"],
+        "genre": ["id", "gid", "name", "comment", "edits_pending", "last_updated"],
         "recording": ["id", "gid", "name", "artist_credit", "length", "comment", "edits_pending", "last_updated", "video"],
         "release": ["id", "gid", "name", "artist_credit", "release_group", "status", "packaging", "language", "script", "barcode", "comment", "edits_pending", "quality", "last_updated"],
         "release_status": ["id", "name", "parent", "child_order", "description", "gid"],
@@ -577,7 +627,7 @@ def import_core_data(db: Any, config: Config, paths: Paths) -> None:
         "recording",
         tables["recording"],
         schemas["recording"],
-        ["gid", "length", "video"],
+        ["id", "gid", "length", "video"],
         "try_cast(gid AS UUID) IN ("
         "SELECT source_recording_mbid FROM recording_metadata UNION "
         "SELECT canonical_recording_mbid FROM recording_metadata)",
@@ -597,6 +647,7 @@ def import_core_data(db: Any, config: Config, paths: Paths) -> None:
         schemas["release_status"],
         ["id", "name"],
     )
+    _load_table(db, "genre", tables["genre"], schemas["genre"], ["name"])
 
     with _core_step("resolving recording duration and video metadata"):
         db.execute(
@@ -748,6 +799,51 @@ def import_core_data(db: Any, config: Config, paths: Paths) -> None:
             WHERE metadata.source_recording_mbid = dates.source_recording_mbid
             """
         )
+    _load_table(
+        db,
+        "artist",
+        tables["artist"],
+        schemas["artist"],
+        ["id", "gid"],
+        "try_cast(gid AS UUID) IN (SELECT primary_artist_mbid FROM recording_metadata WHERE primary_artist_mbid IS NOT NULL)",
+    )
+    with _core_step("indexing genre targets"):
+        with transaction(db):
+            db.execute(
+                """
+                CREATE OR REPLACE TABLE recording_genre_target AS
+                WITH recording_lookup AS (
+                  SELECT source_recording_mbid,
+                         source_recording_mbid AS recording_mbid
+                  FROM recording_metadata
+                  UNION ALL
+                  SELECT source_recording_mbid,
+                         canonical_recording_mbid AS recording_mbid
+                  FROM recording_metadata
+                  WHERE canonical_recording_mbid IS NOT NULL
+                    AND canonical_recording_mbid <> source_recording_mbid
+                )
+                SELECT lookup.source_recording_mbid,
+                       'recording' AS entity_type,
+                       try_cast(recording.id AS INTEGER) AS entity_id
+                FROM recording_lookup lookup
+                JOIN mb_recording recording
+                  ON try_cast(recording.gid AS UUID) = lookup.recording_mbid
+                UNION ALL
+                SELECT DISTINCT source_recording_mbid, 'release_group', release_group_id
+                FROM candidate_release WHERE release_group_id IS NOT NULL
+                UNION ALL
+                SELECT DISTINCT metadata.source_recording_mbid, 'artist',
+                       try_cast(artist.id AS INTEGER)
+                FROM recording_metadata metadata
+                JOIN mb_artist artist
+                  ON try_cast(artist.gid AS UUID) = metadata.primary_artist_mbid
+                """
+            )
+            db.execute(
+                "CREATE OR REPLACE TABLE curated_genre AS "
+                "SELECT DISTINCT name FROM mb_genre WHERE trim(name) <> ''"
+            )
     with _core_step("computing metadata completeness"):
         db.execute(
             """
@@ -763,6 +859,110 @@ def import_core_data(db: Any, config: Config, paths: Paths) -> None:
 
     official = int(db.execute("SELECT count(*) FROM recording_metadata WHERE official_release").fetchone()[0])
     videos = int(db.execute("SELECT count(*) FROM recording_metadata WHERE video").fetchone()[0])
+    genre_targets = int(db.execute("SELECT count(*) FROM recording_genre_target").fetchone()[0])
     set_stat(db, "musicbrainz", "official_recordings", official)
     set_stat(db, "musicbrainz", "video_recordings", videos)
-    print(f"resolved core metadata: {official:,} official recordings; {videos:,} videos")
+    set_stat(db, "musicbrainz", "genre_targets", genre_targets)
+    print(
+        f"resolved core metadata: {official:,} official recordings; {videos:,} videos; "
+        f"{genre_targets:,} genre targets"
+    )
+
+
+def import_genre_data(db: Any, config: Config, paths: Paths) -> None:
+    source = config.source("musicbrainz-derived")
+    archive_path = paths.raw / source.filename
+    if not archive_path.exists():
+        raise SystemExit(f"missing {archive_path}; run `python -m song_pick download` first")
+    with _core_step("scanning and extracting the genre archive"):
+        tables = _extract_genre_tables(archive_path, paths.work)
+    schemas = {
+        "artist_tag": ["artist", "tag", "count", "last_updated"],
+        "recording_tag": ["recording", "tag", "count", "last_updated"],
+        "release_group_tag": ["release_group", "tag", "count", "last_updated"],
+        "tag": ["id", "name", "ref_count"],
+    }
+    _load_table(db, "tag", tables["tag"], schemas["tag"], ["id", "name"])
+    for entity_type, table_name, entity_column in (
+        ("recording", "recording_tag", "recording"),
+        ("release_group", "release_group_tag", "release_group"),
+        ("artist", "artist_tag", "artist"),
+    ):
+        _load_table(
+            db,
+            table_name,
+            tables[table_name],
+            schemas[table_name],
+            [entity_column, "tag", "count"],
+            f"try_cast({entity_column} AS INTEGER) IN ("
+            f"SELECT entity_id FROM recording_genre_target WHERE entity_type = '{entity_type}')",
+        )
+    with _core_step("resolving curated genres"):
+        with transaction(db):
+            db.execute("DELETE FROM recording_genre_metadata")
+            db.execute(
+                """
+                INSERT INTO recording_genre_metadata
+                WITH curated_tag AS (
+                  SELECT try_cast(tag.id AS INTEGER) AS tag_id,
+                         min(genres.name) AS genre
+                  FROM mb_tag tag
+                  JOIN curated_genre genres
+                    ON lower(trim(tag.name)) = lower(trim(genres.name))
+                  GROUP BY tag.id
+                ),
+                signals AS (
+                  SELECT target.source_recording_mbid, curated.genre,
+                         try_cast(tags.count AS INTEGER) AS vote_count, 3 AS specificity
+                  FROM recording_genre_target target
+                  JOIN mb_recording_tag tags
+                    ON target.entity_type = 'recording'
+                   AND try_cast(tags.recording AS INTEGER) = target.entity_id
+                  JOIN curated_tag curated ON curated.tag_id = try_cast(tags.tag AS INTEGER)
+                  WHERE try_cast(tags.count AS INTEGER) > 0
+                  UNION ALL
+                  SELECT target.source_recording_mbid, curated.genre,
+                         try_cast(tags.count AS INTEGER) AS vote_count, 2 AS specificity
+                  FROM recording_genre_target target
+                  JOIN mb_release_group_tag tags
+                    ON target.entity_type = 'release_group'
+                   AND try_cast(tags.release_group AS INTEGER) = target.entity_id
+                  JOIN curated_tag curated ON curated.tag_id = try_cast(tags.tag AS INTEGER)
+                  WHERE try_cast(tags.count AS INTEGER) > 0
+                  UNION ALL
+                  SELECT target.source_recording_mbid, curated.genre,
+                         try_cast(tags.count AS INTEGER) AS vote_count, 1 AS specificity
+                  FROM recording_genre_target target
+                  JOIN mb_artist_tag tags
+                    ON target.entity_type = 'artist'
+                   AND try_cast(tags.artist AS INTEGER) = target.entity_id
+                  JOIN curated_tag curated ON curated.tag_id = try_cast(tags.tag AS INTEGER)
+                  WHERE try_cast(tags.count AS INTEGER) > 0
+                ),
+                ranked AS (
+                  SELECT source_recording_mbid, genre,
+                         sum(vote_count)::INTEGER AS vote_count,
+                         max(specificity)::SMALLINT AS specificity,
+                         row_number() OVER (
+                           PARTITION BY source_recording_mbid
+                           ORDER BY max(specificity) DESC, sum(vote_count) DESC,
+                                    lower(genre), genre
+                         ) AS genre_rank
+                  FROM signals
+                  GROUP BY source_recording_mbid, genre
+                )
+                SELECT source_recording_mbid, genre, vote_count, specificity
+                FROM ranked WHERE genre_rank <= 3
+                """
+            )
+    for path in tables.values():
+        path.unlink()
+    genre_recordings = int(
+        db.execute(
+            "SELECT count(DISTINCT source_recording_mbid) FROM recording_genre_metadata"
+        ).fetchone()[0]
+    )
+    genre_rows = int(db.execute("SELECT count(*) FROM recording_genre_metadata").fetchone()[0])
+    set_stat(db, "musicbrainz_genres", "recordings", genre_recordings)
+    set_stat(db, "musicbrainz_genres", "genre_rows", genre_rows)
+    print(f"resolved genres for {genre_recordings:,} recordings ({genre_rows:,} labels)")

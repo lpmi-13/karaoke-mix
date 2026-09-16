@@ -1,0 +1,70 @@
+{
+  "catalogVersion": 2,
+  "generatedAt": "2026-09-12T00:00:00Z",
+  "targetSize": 50000,
+  "tempo": {
+    "rawMinBpm": 20.0,
+    "rawMaxBpm": 440.0,
+    "minBpm": 45.0,
+    "maxBpm": 220.0,
+    "clusterTolerancePercent": 1.0,
+    "minimumObservations": 2,
+    "minimumDominantSupport": 0.75,
+    "maximumSpreadPercent": 1.0,
+    "octaveAmbiguityRatio": 0.8,
+    "histogramTolerancePercent": 2.0,
+    "observationCountCap": 8,
+    "canonicalConflictPercent": 1.0
+  },
+  "selection": {
+    "artistSoftCap": 8,
+    "bucketWidthBpm": 2.0,
+    "underrepresentedBucketBonus": 0.03,
+    "flexibleMatchPercent": 2.0,
+    "minimumFlexibleMatches": 5,
+    "minimumDurationMs": 60000,
+    "maximumDurationMs": 900000
+  },
+  "popularity": {
+    "url": "https://api.listenbrainz.org/1/popularity/recording",
+    "batchSize": 1000,
+    "maximumRetries": 6,
+    "initialBackoffSeconds": 1.0,
+    "tokenEnvironment": "LISTENBRAINZ_TOKEN",
+    "userAgent": "Beatmatch catalog builder/2.0 (non-commercial offline catalog build)"
+  },
+  "sources": [
+    {
+      "name": "acousticbrainz-rhythm",
+      "url": "https://data.metabrainz.org/pub/musicbrainz/acousticbrainz/dumps/acousticbrainz-lowlevel-features-20220623/acousticbrainz-lowlevel-features-20220623-rhythm.tar.zst",
+      "filename": "acousticbrainz-lowlevel-features-20220623-rhythm.tar.zst",
+      "sha256": "5f813ff49c2ac1f35cca3947e081178758cddbd9b5292163dff58bdf3a025fad",
+      "snapshot": "2022-06-23",
+      "license": "CC0-1.0"
+    },
+    {
+      "name": "musicbrainz-core",
+      "url": "https://ftp.musicbrainz.org/pub/musicbrainz/data/fullexport/20260912-002318/mbdump.tar.bz2",
+      "filename": "musicbrainz-mbdump-20260912.tar.bz2",
+      "sha256": "dbe78cf9c03a117817de6ed404041dc7e9da33fb0170e0679de0b727d4f7c0bd",
+      "snapshot": "2026-09-12",
+      "license": "CC0-1.0"
+    },
+    {
+      "name": "musicbrainz-derived",
+      "url": "https://ftp.musicbrainz.org/pub/musicbrainz/data/fullexport/20260912-002318/mbdump-derived.tar.bz2",
+      "filename": "musicbrainz-mbdump-derived-20260912.tar.bz2",
+      "sha256": "e015b01aa227503a7e3d87636d0f831e32f06be5f529fdd75f75119352aed63f",
+      "snapshot": "2026-09-12",
+      "license": "CC-BY-NC-SA-3.0"
+    },
+    {
+      "name": "musicbrainz-canonical",
+      "url": "https://data.metabrainz.org/pub/musicbrainz/canonical_data/musicbrainz-canonical-dump-20260903-080002/musicbrainz-canonical-dump-20260903-080002.tar.zst",
+      "filename": "musicbrainz-canonical-dump-20260903-080002.tar.zst",
+      "sha256": "3a8fc810e5457ab920fe668bc65ad6290d95e51d1a0e80da53fe0f448481b9bf",
+      "snapshot": "2026-09-03",
+      "license": "CC0-1.0"
+    }
+  ]
+}

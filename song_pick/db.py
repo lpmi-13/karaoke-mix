@@ -109,6 +109,24 @@ def initialize(db: Any) -> None:
           PRIMARY KEY (source_recording_mbid, release_mbid)
         );
 
+        CREATE TABLE IF NOT EXISTS recording_genre_metadata (
+          source_recording_mbid UUID NOT NULL,
+          genre VARCHAR NOT NULL,
+          vote_count INTEGER NOT NULL,
+          specificity SMALLINT NOT NULL,
+          PRIMARY KEY (source_recording_mbid, genre)
+        );
+
+        CREATE TABLE IF NOT EXISTS recording_genre_target (
+          source_recording_mbid UUID NOT NULL,
+          entity_type VARCHAR NOT NULL,
+          entity_id INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS curated_genre (
+          name VARCHAR PRIMARY KEY
+        );
+
         CREATE TABLE IF NOT EXISTS tempo_candidate (
           canonical_recording_mbid UUID PRIMARY KEY,
           selected_source_recording_mbid UUID NOT NULL,

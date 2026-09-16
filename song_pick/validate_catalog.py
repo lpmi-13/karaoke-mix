@@ -46,6 +46,14 @@ def validate_document(
             errors.append(f"{prefix}.title is empty")
         if not isinstance(song.get("artist"), str) or not song["artist"].strip():
             errors.append(f"{prefix}.artist is empty")
+        genres = song.get("genres")
+        if (
+            not isinstance(genres, list)
+            or len(genres) > 3
+            or any(not isinstance(genre, str) or not genre.strip() for genre in genres)
+            or len(set(genres)) != len(genres)
+        ):
+            errors.append(f"{prefix}.genres must contain up to three unique non-empty strings")
         bpm = song.get("bpm")
         if isinstance(bpm, bool) or not isinstance(bpm, (int, float)) or not math.isfinite(bpm) or not minimum <= bpm <= maximum:
             errors.append(f"{prefix}.bpm is outside [{minimum}, {maximum}]")

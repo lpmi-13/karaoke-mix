@@ -12,10 +12,16 @@ from .config import Config, Paths
 def catalog_document(db: Any, config: Config) -> dict[str, object]:
     rows = db.execute(
         """
-        SELECT canonical_recording_mbid::VARCHAR, title, artist_credit, bpm,
-               tempo_quality, listener_rank
-        FROM catalog_selection
-        ORDER BY listener_rank, canonical_recording_mbid
+        SELECT selection.canonical_recording_mbid::VARCHAR, selection.title,
+               selection.artist_credit,
+               COALESCE((
+                 SELECT list(genre ORDER BY specificity DESC, vote_count DESC, lower(genre), genre)
+                 FROM recording_genre_metadata genres
+                 WHERE genres.source_recording_mbid = selection.selected_source_recording_mbid
+               ), []::VARCHAR[]) AS genres,
+               selection.bpm, selection.tempo_quality, selection.listener_rank
+        FROM catalog_selection selection
+        ORDER BY selection.listener_rank, selection.canonical_recording_mbid
         """
     ).fetchall()
     return {
@@ -26,9 +32,10 @@ def catalog_document(db: Any, config: Config) -> dict[str, object]:
                 "id": row[0],
                 "title": row[1],
                 "artist": row[2],
-                "bpm": round(float(row[3]), 1),
-                "tempoQuality": round(float(row[4]), 4),
-                "listenerRank": int(row[5]),
+                "genres": row[3],
+                "bpm": round(float(row[4]), 1),
+                "tempoQuality": round(float(row[5]), 4),
+                "listenerRank": int(row[6]),
             }
             for row in rows
         ],

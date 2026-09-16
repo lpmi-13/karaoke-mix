@@ -7,7 +7,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG_PATH = Path(__file__).with_name("config.v1.json")
+DEFAULT_CONFIG_PATH = Path(__file__).with_name("config.v2.json")
 
 
 @dataclass(frozen=True)

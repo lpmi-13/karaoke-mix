@@ -11,15 +11,39 @@ from .config import Config
 
 
 def fingerprint(config: Config, stage: str) -> str:
-    relevant = {
+    source_names = {
+        "import-acousticbrainz": ("acousticbrainz-rhythm",),
+        "import-musicbrainz-canonical": ("musicbrainz-canonical",),
+        "import-musicbrainz-core": ("musicbrainz-core",),
+        "import-musicbrainz-genres": ("musicbrainz-derived",),
+    }.get(stage, ())
+    relevant: dict[str, Any] = {
         "stage": stage,
-        "catalogVersion": config.version,
+        "sources": [config.source(name).__dict__ for name in source_names],
+    }
+    if stage in {"import-acousticbrainz", "score-source-tempos", "score-canonical-tempos"}:
+        relevant["tempo"] = config.tempo
+    if stage == "import-musicbrainz-core":
+        # Increment when the extracted tables or derived metadata contract changes.
+        relevant["coreImportVersion"] = 2
+    if stage == "import-musicbrainz-genres":
+        relevant["genreImportVersion"] = 1
+    return hashlib.sha256(json.dumps(relevant, sort_keys=True).encode()).hexdigest()
+
+
+def _compatible_fingerprints(config: Config, stage: str) -> set[str]:
+    """Recognize reusable v1 imports while migrating the pipeline to v2."""
+    if config.version != 2 or stage == "import-musicbrainz-core":
+        return set()
+    legacy = {
+        "stage": stage,
+        "catalogVersion": 1,
         "generatedAt": config.generated_at,
         "tempo": config.tempo,
         "selection": config.selection,
         "sources": [source.__dict__ for source in config.sources],
     }
-    return hashlib.sha256(json.dumps(relevant, sort_keys=True).encode()).hexdigest()
+    return {hashlib.sha256(json.dumps(legacy, sort_keys=True).encode()).hexdigest()}
 
 
 def run_stage(
@@ -33,7 +57,12 @@ def run_stage(
     row = db.execute(
         "SELECT fingerprint FROM pipeline_stage WHERE stage = ?", [stage]
     ).fetchone()
-    if row and row[0] == expected and not force:
+    if row and row[0] in ({expected} | _compatible_fingerprints(config, stage)) and not force:
+        if row[0] != expected:
+            db.execute(
+                "UPDATE pipeline_stage SET fingerprint = ?, completed_at = current_timestamp WHERE stage = ?",
+                [expected, stage],
+            )
         print(f"resume: {stage} already complete", flush=True)
         return
     print(f"starting: {stage}", flush=True)
