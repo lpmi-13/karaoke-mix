@@ -4,6 +4,7 @@ import {
   Check,
   CircleHelp,
   Headphones,
+  Library,
   Music2,
   Pause,
   Play,
@@ -16,15 +17,24 @@ import {
 } from "lucide-react";
 import {
   MATCH_THRESHOLDS,
+  browseSongs,
   coloursForRecording,
+  getGenreOptions,
   getMatches,
   loadCatalog,
   searchSongs,
+  type BrowseSort,
   type MatchBand,
   type PreparedSong,
   type Song,
   type SongMatch,
 } from "./data";
+
+const BROWSE_PAGE_SIZE = 80;
+
+function genreLabel(value: string): string {
+  return value.replace(/(^|[\s/-])\p{Letter}/gu, (match) => match.toLocaleUpperCase());
+}
 
 function Artwork({ song, size = "large" }: { song: Song; size?: "small" | "large" }) {
   const initials = song.artist
@@ -49,8 +59,21 @@ function Artwork({ song, size = "large" }: { song: Song; size?: "small" | "large
 function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song: Song) => void }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
+  const [genre, setGenre] = useState("");
+  const [sortBy, setSortBy] = useState<BrowseSort>("title");
+  const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const results = useMemo(() => searchSongs(songs, query), [query, songs]);
+  const genres = useMemo(() => getGenreOptions(songs), [songs]);
+  const browsedSongs = useMemo(() => browseSongs(songs, genre, sortBy), [genre, songs, sortBy]);
+  const visibleBrowseSongs = browsedSongs.slice(0, browseLimit);
+
+  const choose = (song: Song) => {
+    onSelect(song);
+    setQuery("");
+    setOpen(false);
+  };
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -68,14 +91,13 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
+            setBrowsing(false);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && results[0]) {
-              onSelect(results[0]);
-              setQuery("");
-              setOpen(false);
+              choose(results[0]);
             }
             if (event.key === "Escape") setOpen(false);
           }}
@@ -93,33 +115,91 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
       </div>
 
       {open && (
-        <div className="search-results" role="listbox">
-          <p className="search-results__label">{query ? "Songs" : "Familiar songs"}</p>
-          {results.length ? (
-            results.map((song) => (
-              <button
-                key={song.id}
-                className="search-result"
-                onClick={() => {
-                  onSelect(song);
-                  setQuery("");
-                  setOpen(false);
-                }}
-                role="option"
-              >
-                <Artwork song={song} size="small" />
-                <span className="search-result__copy">
-                  <strong>{song.title}</strong>
-                  <small>{song.artist}</small>
-                </span>
-                <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
-              </button>
-            ))
+        <div className={`search-results ${browsing ? "search-results--browse" : ""}`}>
+          {browsing ? (
+            <>
+              <div className="browse-heading">
+                <div><span>Browse the catalog</span><strong>{browsedSongs.length.toLocaleString()} songs</strong></div>
+                <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close catalog browser"><X size={18} /></button>
+              </div>
+              <div className="browse-controls">
+                <label>
+                  <span>Genre</span>
+                  <select
+                    aria-label="Browse by genre"
+                    value={genre}
+                    onChange={(event) => {
+                      setGenre(event.target.value);
+                      setBrowseLimit(BROWSE_PAGE_SIZE);
+                    }}
+                  >
+                    <option value="">All genres</option>
+                    {genres.map((option) => <option key={option.name} value={option.name}>{genreLabel(option.name)} ({option.count.toLocaleString()})</option>)}
+                  </select>
+                </label>
+                <div className="browse-sort">
+                  <span>Order by</span>
+                  <div role="group" aria-label="Order songs by">
+                    <button className={sortBy === "title" ? "active" : ""} aria-pressed={sortBy === "title"} onClick={() => { setSortBy("title"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Song title</button>
+                    <button className={sortBy === "artist" ? "active" : ""} aria-pressed={sortBy === "artist"} onClick={() => { setSortBy("artist"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Artist</button>
+                  </div>
+                </div>
+              </div>
+              <div className="browse-list" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
+                {visibleBrowseSongs.map((song) => (
+                  <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
+                    <Artwork song={song} size="small" />
+                    <span className="search-result__copy">
+                      <strong>{song.title}</strong>
+                      <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
+                    </span>
+                    <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
+                  </button>
+                ))}
+                {visibleBrowseSongs.length < browsedSongs.length && (
+                  <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
+                    Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
+                  </button>
+                )}
+              </div>
+            </>
           ) : (
-            <div className="empty-search">No song found in this catalog.</div>
+            <>
+              <p className="search-results__label">{query ? "Best matches" : "Familiar songs"}</p>
+              <div role="listbox" aria-label="Search results">
+                {results.length ? results.map((song) => (
+                  <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
+                    <Artwork song={song} size="small" />
+                    <span className="search-result__copy">
+                      <strong>{song.title}</strong>
+                      <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
+                    </span>
+                    <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
+                  </button>
+                )) : (
+                  <div className="empty-search">No direct match. Try browsing by genre instead.</div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
+
+      <div className="search-assists">
+        <button
+          className="browse-button"
+          aria-expanded={open && browsing}
+          onClick={() => {
+            setQuery("");
+            setBrowsing(true);
+            setOpen(true);
+          }}
+        >
+          <Library size={14} /> Browse {songs.length.toLocaleString()} songs by genre
+        </button>
+        <span>or try</span>
+        {songs.slice(0, 2).map((song) => <button key={song.id} className="quick-pick" onClick={() => choose(song)}>{song.title}</button>)}
+      </div>
     </div>
   );
 }
@@ -230,6 +310,7 @@ function MatchCard({
 
         <div className="match-card__tags">
           <span className="tag tag--tempo"><Check size={13} /> {tempoLabel}</span>
+          {match.song.genres[0] && <span className="tag">{genreLabel(match.song.genres[0])}</span>}
           <span className="tag"><Music2 size={13} /> Automatic estimate</span>
         </div>
 
@@ -288,9 +369,8 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           <div className="hero__copy">
             <p className="eyebrow"><Sparkles size={14} /> Find songs on the same beat</p>
             <h1>Your next song<br />is already <em>in time.</em></h1>
-            <p className="hero__intro">Pick a recording. We’ll find familiar songs with a similar estimated tempo—no audio, lyrics, or artwork required.</p>
+            <p className="hero__intro">Search or browse {songs.length.toLocaleString()} recordings by genre. We’ll find familiar songs with a similar estimated tempo—no audio, lyrics, or artwork required.</p>
             <SearchBox songs={songs} onSelect={chooseSong} />
-            <div className="popular-searches"><span>Try</span>{songs.slice(0, 3).map((song) => <button key={song.id} onClick={() => chooseSong(song)}>{song.title}</button>)}</div>
           </div>
 
           <div className="hero__visual" aria-label="Song matching illustration">
@@ -326,7 +406,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
 
         <section className="how-section" id="how-it-works">
           <div className="how-section__intro"><p className="eyebrow">How it works</p><h2>One catalog.<br />Three tempo bands.</h2><p>Every BPM is an automatic estimate. Similar tempo is a useful starting point, not a promise that two songs will work musically.</p></div>
-          <div className="steps"><article><span>01</span><Search size={21} /><h3>Pick a recording</h3><p>Search the static catalog by title or artist.</p></article><article><span>02</span><SlidersHorizontal size={21} /><h3>Choose a range</h3><p>Compare exact, flexible, or exploratory BPM bands.</p></article><article><span>03</span><WandSparkles size={21} /><h3>Try the timing</h3><p>Use the count-in, then decide with your own ears.</p></article></div>
+          <div className="steps"><article><span>01</span><Search size={21} /><h3>Pick a recording</h3><p>Search directly, or browse a genre ordered by song or artist.</p></article><article><span>02</span><SlidersHorizontal size={21} /><h3>Choose a range</h3><p>Compare exact, flexible, or exploratory BPM bands.</p></article><article><span>03</span><WandSparkles size={21} /><h3>Try the timing</h3><p>Use the count-in, then decide with your own ears.</p></article></div>
         </section>
       </main>
 

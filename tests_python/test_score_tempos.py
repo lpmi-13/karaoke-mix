@@ -91,6 +91,7 @@ class ValidationTests(unittest.TestCase):
                 "id": f"00000000-0000-4000-8000-{index:012d}",
                 "title": f"Song {index}",
                 "artist": "Artist",
+                "genres": ["rock"],
                 "bpm": 100 + index * 0.1,
                 "tempoQuality": 0.9,
                 "listenerRank": index + 1,
@@ -99,7 +100,7 @@ class ValidationTests(unittest.TestCase):
         ]
         self.assertEqual(
             validate_document(
-                {"version": 1, "generatedAt": "2026-09-12T00:00:00Z", "songs": songs},
+                {"version": 2, "generatedAt": "2026-09-12T00:00:00Z", "songs": songs},
                 config,
             ),
             [],

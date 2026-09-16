@@ -26,6 +26,7 @@ from song_pick.import_musicbrainz import (
     _flush_canonical,
     import_canonical_data,
     import_core_data,
+    import_genre_data,
 )
 from song_pick.score_tempos import score_canonical_tempos, score_source_tempos
 from song_pick.select_catalog import select_catalog
@@ -224,15 +225,22 @@ class DuckDbPipelineTests(unittest.TestCase):
         status_gid = "40000000-0000-4000-8000-000000000001"
         release_group_gid = "50000000-0000-4000-8000-000000000001"
         secondary_gid = "60000000-0000-4000-8000-000000000001"
+        genre_gid = "70000000-0000-4000-8000-000000000001"
         core_members = {
+            "mbdump/artist": f"30\t{artist_mbid}\tAn Artist\tArtist, An\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\t0\t{timestamp}\tf\t\\N\t\\N\n".encode(),
+            "mbdump/artist_tag": f"30\t7\t5\t{timestamp}\n".encode(),
+            "mbdump/genre": f"9\t{genre_gid}\thip hop\t\t0\t{timestamp}\n".encode(),
             "mbdump/recording": f"1\t{canonical_mbid}\tA Song\t1\t180000\t\t0\t{timestamp}\tf\n".encode(),
+            "mbdump/recording_tag": f"1\t7\t3\t{timestamp}\n".encode(),
             "mbdump/release": f"10\t{release_mbid}\tRelease\t1\t20\t1\t\\N\t\\N\t\\N\t\\N\t\t0\t-1\t{timestamp}\n".encode(),
             "mbdump/release_status": f"1\tOfficial\t\\N\t0\tOfficial release\t{status_gid}\n".encode(),
             "mbdump/release_group": f"20\t{release_group_gid}\tRelease group\t1\t1\t\t0\t{timestamp}\n".encode(),
             "mbdump/release_group_secondary_type": f"2\tLive\t\\N\t0\tLive release\t{secondary_gid}\n".encode(),
             "mbdump/release_group_secondary_type_join": f"20\t2\t{timestamp}\n".encode(),
+            "mbdump/release_group_tag": f"20\t7\t4\t{timestamp}\n".encode(),
             "mbdump/release_country": b"10\t222\t2020\t1\t2\n",
             "mbdump/release_unknown_country": b"10\t2020\t1\t2\n",
+            "mbdump/tag": b"7\thip hop\t20\n",
         }
         self._tar_bz2(self.paths.raw / core_filename, core_members)
         core_output = io.StringIO()
@@ -250,6 +258,18 @@ class DuckDbPipelineTests(unittest.TestCase):
             "core import: completed computing metadata completeness",
             core_output.getvalue(),
         )
+        derived_filename = "derived-test.tar.bz2"
+        self._set_source_filename("musicbrainz-derived", derived_filename)
+        self._tar_bz2(
+            self.paths.raw / derived_filename,
+            {
+                "mbdump/artist_tag": core_members["mbdump/artist_tag"],
+                "mbdump/recording_tag": core_members["mbdump/recording_tag"],
+                "mbdump/release_group_tag": core_members["mbdump/release_group_tag"],
+                "mbdump/tag": core_members["mbdump/tag"],
+            },
+        )
+        import_genre_data(self.db, self.config, self.paths)
         score_canonical_tempos(self.db, self.config)
         row = self.db.execute(
             "SELECT canonical_recording_mbid::VARCHAR, official_release, live, duration_ms, first_release_date::VARCHAR FROM recording_metadata"
@@ -258,6 +278,12 @@ class DuckDbPipelineTests(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT canonical_recording_mbid::VARCHAR FROM tempo_candidate").fetchone()[0],
             canonical_mbid,
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT genre, specificity, vote_count FROM recording_genre_metadata"
+            ).fetchone(),
+            ("hip hop", 3, 12),
         )
 
     def test_core_archive_copy_reports_progress(self) -> None:
