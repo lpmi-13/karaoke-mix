@@ -10,10 +10,10 @@ const songs = [
   { id: "00000000-0000-4000-8000-000000000007", title: "Don't Stop Believin'", artist: "Journey", genres: ["rock"], bpm: 90, tempoQuality: 0.93, listenerRank: 7 },
 ];
 
-async function useCatalog(page: Page) {
+async function useCatalog(page: Page, catalog = songs) {
   await page.route("**/catalog/songs.v2.json", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ version: 2, generatedAt: "2026-09-12T00:00:00Z", songs }),
+    body: JSON.stringify({ version: 2, generatedAt: "2026-09-12T00:00:00Z", songs: catalog }),
   }));
 }
 
@@ -58,6 +58,69 @@ test("browses a genre and toggles between song and artist ordering", async ({ pa
   await page.getByRole("button", { name: "Artist", pressed: false }).click();
   await expect(page.locator(".browse-list .search-result strong").first()).toHaveText("Nosebleeds");
   await expect(page.getByRole("button", { name: "Artist", pressed: true })).toBeVisible();
+});
+
+test("expands all search results on Enter without selecting a suggestion", async ({ page }) => {
+  const matchingSongs = Array.from({ length: 20 }, (_, index) => ({
+    id: `search-result-${index}`,
+    title: `Shared Groove ${String(index + 1).padStart(2, "0")}`,
+    artist: `Test Artist ${index + 1}`,
+    genres: ["pop"],
+    bpm: 100 + index / 10,
+    tempoQuality: 0.9,
+    listenerRank: songs.length + index + 1,
+  }));
+  await useCatalog(page, [...songs, ...matchingSongs]);
+  await page.goto("/");
+
+  const expandedResults = page.locator("#catalog-search-results");
+  expect(await expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+
+  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  await search.fill("Shared Groove");
+  await expect(page.getByText("Best matches", { exact: true })).toBeVisible();
+  await expect(page.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(8);
+
+  const scrollBeforeSearch = await page.evaluate(() => window.scrollY);
+  await search.press("Enter");
+  await expect(page.getByRole("listbox", { name: "Search results" })).toBeHidden();
+  await expect(expandedResults).toHaveClass(/catalog-search-results--open/);
+  await expect.poll(() => expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBeforeSearch);
+  await expect.poll(() => expandedResults.evaluate((element) => Math.abs(element.getBoundingClientRect().top - 24))).toBeLessThan(8);
+  await expect(page.locator(".source-tile strong")).toHaveText("Levitating");
+  const resultsHeading = page.locator(".catalog-search-results__heading h2");
+  await expect(resultsHeading).toHaveText("Results for “Shared Groove”");
+  await expect(resultsHeading).toBeVisible();
+
+  const results = page.getByRole("listbox", { name: "All results for Shared Groove" });
+  await expect(results.getByRole("option")).toHaveCount(20);
+  const dimensions = await results.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    overflowY: getComputedStyle(element).overflowY,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(dimensions.overflowY).toBe("auto");
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
+
+  await results.scrollIntoViewIfNeeded();
+  await results.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(results.getByRole("option", { name: /Shared Groove 20/ })).toBeInViewport();
+
+  await page.getByRole("button", { name: "Close search results" }).click();
+  await expect(expandedResults).not.toHaveClass(/catalog-search-results--open/);
+  await expect(resultsHeading).toBeAttached();
+  expect(await expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
+  await expect(resultsHeading).toHaveCount(0, { timeout: 1_200 });
+  await expect.poll(() => expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+
+  await search.press("Enter");
+  const reopenedResults = page.getByRole("listbox", { name: "All results for Shared Groove" });
+  await expect(reopenedResults).toBeVisible();
+  await reopenedResults.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await reopenedResults.getByRole("option", { name: /Shared Groove 20/ }).click();
+  await expect(page.getByRole("heading", { name: /Songs near 101.9 estimated BPM/ })).toBeVisible();
+  await expect(expandedResults).not.toHaveClass(/catalog-search-results--open/);
 });
 
 test("uses exact, flexible, and exploratory thresholds", async ({ page }) => {

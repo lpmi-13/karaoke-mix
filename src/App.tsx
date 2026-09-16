@@ -22,6 +22,7 @@ import {
   getGenreOptions,
   getMatches,
   loadCatalog,
+  normaliseSearch,
   searchSongs,
   type BrowseSort,
   type MatchBand,
@@ -31,6 +32,73 @@ import {
 } from "./data";
 
 const BROWSE_PAGE_SIZE = 80;
+const SEARCH_PAGE_SIZE = 80;
+const SEARCH_RESULTS_TRANSITION_MS = 672;
+const SEARCH_SCROLL_DURATION_MS = 864;
+const SEARCH_MOTION_CURVE = [0.22, 1, 0.36, 1] as const;
+
+function cubicBezierCoordinate(progress: number, firstControl: number, secondControl: number): number {
+  const inverse = 1 - progress;
+  return 3 * inverse * inverse * progress * firstControl
+    + 3 * inverse * progress * progress * secondControl
+    + progress * progress * progress;
+}
+
+function cubicBezierProgress(progress: number, x1: number, y1: number, x2: number, y2: number): number {
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+
+  let lower = 0;
+  let upper = 1;
+  let curveProgress = progress;
+  for (let iteration = 0; iteration < 10; iteration += 1) {
+    curveProgress = (lower + upper) / 2;
+    if (cubicBezierCoordinate(curveProgress, x1, x2) < progress) lower = curveProgress;
+    else upper = curveProgress;
+  }
+  return cubicBezierCoordinate(curveProgress, y1, y2);
+}
+
+function animateScrollTo(element: HTMLElement): () => void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    element.scrollIntoView({ block: "start" });
+    return () => undefined;
+  }
+
+  const start = window.scrollY;
+  const documentHeight = document.documentElement.scrollHeight;
+  const target = Math.max(0, Math.min(
+    start + element.getBoundingClientRect().top - 24,
+    documentHeight - window.innerHeight,
+  ));
+  const distance = target - start;
+  const startedAt = performance.now();
+  const root = document.documentElement;
+  const previousScrollBehavior = root.style.scrollBehavior;
+  let frame = 0;
+  let active = true;
+
+  root.style.scrollBehavior = "auto";
+  const finish = () => {
+    if (!active) return;
+    active = false;
+    root.style.scrollBehavior = previousScrollBehavior;
+  };
+
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / SEARCH_SCROLL_DURATION_MS);
+    const eased = cubicBezierProgress(progress, ...SEARCH_MOTION_CURVE);
+    window.scrollTo(0, start + distance * eased);
+    if (progress < 1) frame = window.requestAnimationFrame(step);
+    else finish();
+  };
+
+  frame = window.requestAnimationFrame(step);
+  return () => {
+    window.cancelAnimationFrame(frame);
+    finish();
+  };
+}
 
 function genreLabel(value: string): string {
   return value.replace(/(^|[\s/-])\p{Letter}/gu, (match) => match.toLocaleUpperCase());
@@ -56,7 +124,28 @@ function Artwork({ song, size = "large" }: { song: Song; size?: "small" | "large
   );
 }
 
-function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song: Song) => void }) {
+function SongResult({ song, onSelect }: { song: Song; onSelect: (song: Song) => void }) {
+  return (
+    <button className="search-result" onClick={() => onSelect(song)} role="option">
+      <Artwork song={song} size="small" />
+      <span className="search-result__copy">
+        <strong>{song.title}</strong>
+        <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
+      </span>
+      <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
+    </button>
+  );
+}
+
+function SearchBox({
+  songs,
+  onSelect,
+  onSearch,
+}: {
+  songs: PreparedSong[];
+  onSelect: (song: Song) => void;
+  onSearch: (query: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [browsing, setBrowsing] = useState(false);
@@ -65,6 +154,7 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasQuery = normaliseSearch(query).length > 0;
   const results = useMemo(() => searchSongs(songs, query), [query, songs]);
   const genres = useMemo(() => getGenreOptions(songs), [songs]);
   const browsedSongs = useMemo(() => browseSongs(songs, genre, sortBy), [genre, songs, sortBy]);
@@ -132,11 +222,14 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
               setOpen(true);
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && results[0]) {
-                choose(results[0]);
+              if (event.key === "Enter" && hasQuery) {
+                event.preventDefault();
+                setOpen(false);
+                onSearch(query.trim());
               }
               if (event.key === "Escape") setOpen(false);
             }}
+            enterKeyHint="search"
             placeholder="Search a song or artist"
             aria-label="Search a song or artist"
             aria-expanded={open}
@@ -183,14 +276,7 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
                 </div>
                 <div className="browse-list" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
                   {visibleBrowseSongs.map((song) => (
-                    <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
-                      <Artwork song={song} size="small" />
-                      <span className="search-result__copy">
-                        <strong>{song.title}</strong>
-                        <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
-                      </span>
-                      <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
-                    </button>
+                    <SongResult key={song.id} song={song} onSelect={choose} />
                   ))}
                   {visibleBrowseSongs.length < browsedSongs.length && (
                     <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
@@ -201,17 +287,14 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
               </>
             ) : (
               <>
-                <p className="search-results__label">{query ? "Best matches" : "Familiar songs"}</p>
-                <div role="listbox" aria-label="Search results">
+                <p className="search-results__label">{hasQuery ? "Best matches" : "Familiar songs"}</p>
+                <div
+                  className="search-results__list"
+                  role="listbox"
+                  aria-label="Search results"
+                >
                   {results.length ? results.map((song) => (
-                    <button key={song.id} className="search-result" onClick={() => choose(song)} role="option">
-                      <Artwork song={song} size="small" />
-                      <span className="search-result__copy">
-                        <strong>{song.title}</strong>
-                        <small>{song.artist}{song.genres[0] && <span className="search-result__genre">{genreLabel(song.genres[0])}</span>}</small>
-                      </span>
-                      <span className="search-result__bpm">~{song.bpm.toFixed(1)} BPM</span>
-                    </button>
+                    <SongResult key={song.id} song={song} onSelect={choose} />
                   )) : (
                     <div className="empty-search">No direct match. Try browsing by genre instead.</div>
                   )}
@@ -227,6 +310,75 @@ function SearchBox({ songs, onSelect }: { songs: PreparedSong[]; onSelect: (song
         {songs.slice(0, 2).map((song) => <button key={song.id} className="quick-pick" onClick={() => choose(song)}>{song.title}</button>)}
       </div>
     </div>
+  );
+}
+
+function CatalogSearchResults({
+  sectionRef,
+  songs,
+  query,
+  expanded,
+  onSelect,
+  onClose,
+}: {
+  sectionRef: React.RefObject<HTMLElement | null>;
+  songs: PreparedSong[];
+  query: string | null;
+  expanded: boolean;
+  onSelect: (song: Song) => void;
+  onClose: () => void;
+}) {
+  const [visibleLimit, setVisibleLimit] = useState(SEARCH_PAGE_SIZE);
+  const results = useMemo(
+    () => query ? searchSongs(songs, query, songs.length) : [],
+    [query, songs],
+  );
+  const visibleResults = results.slice(0, visibleLimit);
+
+  useEffect(() => setVisibleLimit(SEARCH_PAGE_SIZE), [query]);
+
+  const loadMore = (event: React.UIEvent<HTMLDivElement>) => {
+    const list = event.currentTarget;
+    if (list.scrollHeight - list.scrollTop - list.clientHeight > 120) return;
+    setVisibleLimit((current) => Math.min(current + SEARCH_PAGE_SIZE, results.length));
+  };
+
+  return (
+    <section
+      ref={sectionRef}
+      className={`catalog-search-results ${expanded ? "catalog-search-results--open" : ""}`}
+      id="catalog-search-results"
+      aria-hidden={!expanded}
+      inert={!expanded}
+    >
+      <div className="catalog-search-results__reveal">
+        {query && (
+          <div className="catalog-search-results__panel">
+            <div className="catalog-search-results__heading">
+              <div>
+                <p className="eyebrow"><Search size={14} /> Catalog search</p>
+                <h2>Results for <span>“{query}”</span></h2>
+                <p>{results.length.toLocaleString()} {results.length === 1 ? "song" : "songs"} found. Select one to use it as your starting song.</p>
+              </div>
+              <button onClick={onClose} aria-label="Close search results"><X size={19} /></button>
+            </div>
+
+            {results.length ? (
+              <div
+                className="catalog-search-results__list"
+                role="listbox"
+                aria-label={`All results for ${query}`}
+                onScroll={loadMore}
+              >
+                {visibleResults.map((song) => <SongResult key={song.id} song={song} onSelect={onSelect} />)}
+              </div>
+            ) : (
+              <div className="catalog-search-results__empty"><Music2 size={24} /><strong>No songs found</strong><span>Try a different title, artist, or genre.</span></div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -355,7 +507,12 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const [band, setBand] = useState<MatchBand>("exact");
   const [showAll, setShowAll] = useState(false);
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
+  const searchResultsRef = useRef<HTMLElement>(null);
+  const searchCloseTimerRef = useRef<number | null>(null);
+  const cancelSearchScrollRef = useRef<(() => void) | null>(null);
   const matches = useMemo(() => getMatches(songs, source, band), [songs, source, band]);
   const visibleMatches = showAll ? matches : matches.slice(0, 3);
 
@@ -370,10 +527,43 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
   }, []);
+  useEffect(() => () => {
+    if (searchCloseTimerRef.current !== null) window.clearTimeout(searchCloseTimerRef.current);
+    cancelSearchScrollRef.current?.();
+  }, []);
+
+  const collapseSearchResults = () => {
+    setSearchExpanded(false);
+    cancelSearchScrollRef.current?.();
+    if (searchCloseTimerRef.current !== null) window.clearTimeout(searchCloseTimerRef.current);
+    searchCloseTimerRef.current = window.setTimeout(() => {
+      setSubmittedQuery(null);
+      searchCloseTimerRef.current = null;
+    }, SEARCH_RESULTS_TRANSITION_MS);
+  };
 
   const chooseSong = (song: Song) => {
+    const collapseDelay = searchExpanded ? SEARCH_RESULTS_TRANSITION_MS : 0;
+    collapseSearchResults();
     setSource(song);
-    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), collapseDelay + 100);
+  };
+  const showSearchResults = (query: string) => {
+    if (searchCloseTimerRef.current !== null) {
+      window.clearTimeout(searchCloseTimerRef.current);
+      searchCloseTimerRef.current = null;
+    }
+    cancelSearchScrollRef.current?.();
+    setSearchExpanded(false);
+    setSubmittedQuery(query);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setSearchExpanded(true);
+        window.requestAnimationFrame(() => {
+          if (searchResultsRef.current) cancelSearchScrollRef.current = animateScrollTo(searchResultsRef.current);
+        });
+      });
+    });
   };
   const toggleSaved = (songId: string) => setSaved((current) => {
     const next = new Set(current);
@@ -396,7 +586,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
             <p className="eyebrow"><Sparkles size={14} /> Find songs on the same beat</p>
             <h1>Your next song<br />is already <em>in time.</em></h1>
             <p className="hero__intro">Search or browse {songs.length.toLocaleString()} recordings by genre. We’ll find familiar songs with a similar estimated tempo—no audio, lyrics, or artwork required.</p>
-            <SearchBox songs={songs} onSelect={chooseSong} />
+            <SearchBox songs={songs} onSelect={chooseSong} onSearch={showSearchResults} />
           </div>
 
           <div className="hero__visual" aria-label="Song matching illustration">
@@ -407,6 +597,15 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
             <div className="floating-note floating-note--one">♪</div><div className="floating-note floating-note--two">♫</div>
           </div>
         </section>
+
+        <CatalogSearchResults
+          sectionRef={searchResultsRef}
+          songs={songs}
+          query={submittedQuery}
+          expanded={searchExpanded}
+          onSelect={chooseSong}
+          onClose={collapseSearchResults}
+        />
 
         <section className="match-section" id="matches" ref={resultsRef}>
           <div className="section-heading"><div><p className="eyebrow">Matched to your song</p><h2>Songs near <span>{source.bpm.toFixed(1)} estimated BPM</span></h2></div><button className="change-song" onClick={() => document.querySelector<HTMLInputElement>(".search-box input")?.focus()}><Search size={16} /> Change song</button></div>
