@@ -81,14 +81,29 @@ a { color: inherit; text-decoration: none; }
 .set-drawer__header p:last-child { margin: 13px 0 0; color: #9697aa; font-size: 12px; }
 .set-drawer__close { width: 40px; height: 40px; flex: none; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.035); color: #aaaabd; display: grid; place-items: center; cursor: pointer; }
 .set-drawer__close:hover, .set-drawer__close:focus-visible { border-color: rgba(255,255,255,.25); color: white; outline: 0; }
-.set-drawer__body { flex: 1; min-height: 0; padding: 14px 20px; overflow-y: auto; }
-.set-list { margin: 0; padding: 0; list-style: none; }
-.set-list__item { min-height: 82px; padding: 13px 4px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 22px 44px minmax(0,1fr) auto 34px; align-items: center; gap: 10px; }
+.set-drawer__body { flex: 1; min-height: 0; padding: 18px 20px; overflow-y: auto; }
+.set-groups { display: flex; flex-direction: column; gap: 18px; }
+.set-group { overflow: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 15px; background: rgba(255,255,255,.018); }
+.set-group__meta { min-height: 32px; padding: 0 13px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(142,116,255,.075); color: #9e91df; display: flex; align-items: center; justify-content: space-between; text-transform: uppercase; letter-spacing: 1.25px; font: 700 7px "Manrope", sans-serif; }
+.set-group__meta span:last-child { color: #797b92; letter-spacing: .8px; }
+.set-group__source { min-height: 79px; padding: 13px; border-bottom: 1px solid var(--line); background: linear-gradient(100deg, rgba(142,116,255,.11), rgba(142,116,255,.025)); display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 11px; }
+.set-group__song { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-group__song small { margin-bottom: 1px; color: var(--acid); text-transform: uppercase; letter-spacing: 1.1px; font-size: 7px; font-weight: 700; }
+.set-group__song strong, .set-group__song span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-group__song strong { font: 700 13px "Manrope", sans-serif; }
+.set-group__song span { color: #9a9bad; font-size: 10px; }
+.set-group__tempo { min-width: 54px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.set-group__tempo strong { font: 700 12px "Manrope", sans-serif; }
+.set-group__tempo span { color: #77798e; font-size: 7px; font-weight: 700; letter-spacing: .8px; }
+.set-list { margin: 0; padding: 0 9px; list-style: none; }
+.set-list__item { min-height: 91px; padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 19px 44px minmax(0,1fr) auto 30px; align-items: center; gap: 9px; }
+.set-list__item:last-child { border-bottom: 0; }
 .set-list__number { color: #5e6075; font: 700 9px "Manrope", sans-serif; letter-spacing: 1px; }
 .set-list__song { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.set-list__song strong, .set-list__song span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-list__song strong, .set-list__song span, .set-list__song small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-list__song strong { font: 700 13px "Manrope", sans-serif; }
 .set-list__song span { color: #9293a7; font-size: 11px; }
+.set-list__song small { color: #8e7ee0; font-size: 8px; font-weight: 600; }
 .set-list__tempo { min-width: 50px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .set-list__tempo strong { font: 700 12px "Manrope", sans-serif; }
 .set-list__tempo span { color: #686a80; font-size: 7px; font-weight: 700; letter-spacing: .8px; }
@@ -355,7 +370,9 @@ footer p a { color: #c5bcff; text-decoration: underline; text-underline-offset: 
   .set-drawer__header { min-height: 168px; padding: 24px 20px 21px; }
   .set-drawer__header h2 { font-size: 32px; }
   .set-drawer__body { padding: 10px 14px; }
-  .set-list__item { grid-template-columns: 44px minmax(0,1fr) auto 32px; }
+  .set-groups { gap: 14px; }
+  .set-list { padding: 0 8px; }
+  .set-list__item { grid-template-columns: 40px minmax(0,1fr) auto 28px; gap: 8px; }
   .set-list__number { display: none; }
   .set-list__tempo { min-width: 47px; }
   .set-drawer__footer { padding: 16px 18px; }

@@ -40,6 +40,16 @@ const SEARCH_RESULTS_TRANSITION_MS = 672;
 const SEARCH_SCROLL_DURATION_MS = 864;
 const SEARCH_MOTION_CURVE = [0.22, 1, 0.36, 1] as const;
 
+type SavedMatch = {
+  sourceId: string;
+  songId: string;
+};
+
+type SavedMatchGroup = {
+  source: Song;
+  matches: Song[];
+};
+
 function cubicBezierCoordinate(progress: number, firstControl: number, secondControl: number): number {
   const inverse = 1 - progress;
   return 3 * inverse * inverse * progress * firstControl
@@ -105,6 +115,12 @@ function animateScrollTo(element: HTMLElement): () => void {
 
 function genreLabel(value: string): string {
   return value.replace(/(^|[\s/-])\p{Letter}/gu, (match) => match.toLocaleUpperCase());
+}
+
+function tempoRelationship(song: Song, source: Song): string {
+  const difference = (100 * (song.bpm - source.bpm)) / source.bpm;
+  if (Math.abs(difference) < 0.05) return "Same tempo as base";
+  return `${Math.abs(difference).toFixed(1)}% ${difference > 0 ? "faster" : "slower"} than base`;
 }
 
 function Artwork({ song, size = "large" }: { song: Song; size?: "small" | "large" }) {
@@ -584,20 +600,21 @@ function MatchCard({
 }
 
 function MySetDrawer({
-  songs,
+  groups,
   open,
   onClose,
   onRemove,
   onContinue,
 }: {
-  songs: Song[];
+  groups: SavedMatchGroup[];
   open: boolean;
   onClose: () => void;
-  onRemove: (songId: string) => void;
+  onRemove: (sourceId: string, songId: string) => void;
   onContinue: () => void;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const selectionCount = groups.reduce((count, group) => count + group.matches.length, 0);
 
   useEffect(() => {
     if (!open) return;
@@ -655,8 +672,10 @@ function MySetDrawer({
         <header className="set-drawer__header">
           <div>
             <p className="eyebrow"><Headphones size={14} /> Your selections</p>
-            <h2 id="my-set-title">My set <span>{songs.length}</span></h2>
-            <p>{songs.length ? `${songs.length} ${songs.length === 1 ? "song" : "songs"} ready to try together.` : "Build a shortlist of tempo matches to try."}</p>
+            <h2 id="my-set-title">My set <span>{selectionCount}</span></h2>
+            <p>{selectionCount
+              ? `${selectionCount} saved ${selectionCount === 1 ? "song" : "songs"} from ${groups.length} starting ${groups.length === 1 ? "song" : "songs"}.`
+              : "Build a shortlist of tempo matches to try."}</p>
           </div>
           <button ref={closeButtonRef} className="set-drawer__close" onClick={onClose} aria-label="Close my set">
             <X size={20} />
@@ -664,26 +683,52 @@ function MySetDrawer({
         </header>
 
         <div className="set-drawer__body scroll-region">
-          {songs.length ? (
-            <ul className="set-list">
-              {songs.map((song, index) => (
-                <li className="set-list__item" key={song.id}>
-                  <span className="set-list__number">{String(index + 1).padStart(2, "0")}</span>
-                  <Artwork song={song} size="small" />
-                  <div className="set-list__song">
-                    <strong>{song.title}</strong>
-                    <span>{song.artist}</span>
-                  </div>
-                  <div className="set-list__tempo">
-                    <strong>{song.bpm.toFixed(1)}</strong>
-                    <span>EST. BPM</span>
-                  </div>
-                  <button onClick={() => onRemove(song.id)} aria-label={`Remove ${song.title} by ${song.artist} from my set`}>
-                    <Trash2 size={16} />
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {selectionCount ? (
+            <div className="set-groups">
+              {groups.map((group, groupIndex) => {
+                const headingId = `set-group-${groupIndex + 1}`;
+                return (
+                  <section className="set-group" key={group.source.id} aria-labelledby={headingId}>
+                    <div className="set-group__meta">
+                      <span>Match group {String(groupIndex + 1).padStart(2, "0")}</span>
+                      <span>{group.matches.length} {group.matches.length === 1 ? "match" : "matches"}</span>
+                    </div>
+                    <header className="set-group__source">
+                      <Artwork song={group.source} size="small" />
+                      <div className="set-group__song">
+                        <small>Started with</small>
+                        <strong id={headingId}>{group.source.title}</strong>
+                        <span>{group.source.artist}</span>
+                      </div>
+                      <div className="set-group__tempo">
+                        <strong>{group.source.bpm.toFixed(1)}</strong>
+                        <span>BASE BPM</span>
+                      </div>
+                    </header>
+                    <ol className="set-list">
+                      {group.matches.map((song, index) => (
+                        <li className="set-list__item" key={song.id}>
+                          <span className="set-list__number">{String(index + 1).padStart(2, "0")}</span>
+                          <Artwork song={song} size="small" />
+                          <div className="set-list__song">
+                            <strong>{song.title}</strong>
+                            <span>{song.artist}</span>
+                            <small>{tempoRelationship(song, group.source)}</small>
+                          </div>
+                          <div className="set-list__tempo">
+                            <strong>{song.bpm.toFixed(1)}</strong>
+                            <span>EST. BPM</span>
+                          </div>
+                          <button onClick={() => onRemove(group.source.id, song.id)} aria-label={`Remove ${song.title} by ${song.artist} from my set`}>
+                            <Trash2 size={16} />
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                );
+              })}
+            </div>
           ) : (
             <div className="set-drawer__empty">
               <span><Headphones size={27} /></span>
@@ -694,8 +739,8 @@ function MySetDrawer({
         </div>
 
         <footer className="set-drawer__footer">
-          <div><span>Set length</span><strong>{songs.length} {songs.length === 1 ? "track" : "tracks"}</strong></div>
-          <button onClick={onContinue}>{songs.length ? "Keep discovering" : "Browse matches"} <ArrowRight size={17} /></button>
+          <div><span>Set length</span><strong>{selectionCount} {selectionCount === 1 ? "song" : "songs"}</strong></div>
+          <button onClick={onContinue}>{selectionCount ? "Keep discovering" : "Browse matches"} <ArrowRight size={17} /></button>
         </footer>
       </aside>
     </div>
@@ -707,7 +752,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const [band, setBand] = useState<MatchBand>("exact");
   const [showAll, setShowAll] = useState(false);
   const [matchLimit, setMatchLimit] = useState(MATCH_PREVIEW_SIZE + MATCH_PAGE_SIZE);
-  const [saved, setSaved] = useState<Set<string>>(() => new Set());
+  const [saved, setSaved] = useState<SavedMatch[]>([]);
   const [setOpen, setSetOpen] = useState(false);
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -718,10 +763,22 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const cancelSearchScrollRef = useRef<(() => void) | null>(null);
   const matches = useMemo(() => source ? getMatches(songs, source, band) : [], [songs, source, band]);
   const songsById = useMemo(() => new Map(songs.map((song) => [song.id, song])), [songs]);
-  const savedSongs = useMemo(
-    () => Array.from(saved, (songId) => songsById.get(songId)).filter((song): song is PreparedSong => Boolean(song)),
-    [saved, songsById],
+  const savedSongIds = useMemo(
+    () => new Set(saved.map((entry) => entry.songId)),
+    [saved],
   );
+  const savedGroups = useMemo(() => {
+    const grouped = new Map<string, SavedMatchGroup>();
+    for (const entry of saved) {
+      const sourceSong = songsById.get(entry.sourceId);
+      const matchedSong = songsById.get(entry.songId);
+      if (!sourceSong || !matchedSong) continue;
+      const group = grouped.get(entry.sourceId);
+      if (group) group.matches.push(matchedSong);
+      else grouped.set(entry.sourceId, { source: sourceSong, matches: [matchedSong] });
+    }
+    return Array.from(grouped.values());
+  }, [saved, songsById]);
   const previewMatches = matches.slice(0, MATCH_PREVIEW_SIZE);
   const additionalMatches = matches.slice(MATCH_PREVIEW_SIZE, matchLimit);
 
@@ -778,10 +835,10 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
       });
     });
   };
-  const toggleSaved = (songId: string) => setSaved((current) => {
-    const next = new Set(current);
-    if (next.has(songId)) next.delete(songId); else next.add(songId);
-    return next;
+  const toggleSaved = (sourceId: string, songId: string) => setSaved((current) => {
+    const existingIndex = current.findIndex((entry) => entry.songId === songId);
+    if (existingIndex < 0) return [...current, { sourceId, songId }];
+    return current.filter((_, index) => index !== existingIndex);
   });
   const closeSet = useCallback(() => setSetOpen(false), []);
   const continueMatching = useCallback(() => {
@@ -809,12 +866,12 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           aria-expanded={setOpen}
           aria-controls="my-set-drawer"
         >
-          <Headphones size={17} /> My set <span>{saved.size}</span>
+          <Headphones size={17} /> My set <span>{saved.length}</span>
         </button>
       </header>
 
       <MySetDrawer
-        songs={savedSongs}
+        groups={savedGroups}
         open={setOpen}
         onClose={closeSet}
         onRemove={toggleSaved}
@@ -882,7 +939,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
               onScroll={loadMoreMatches}
             >
               <div className="match-grid">
-                {previewMatches.map((match, index) => <MatchCard key={match.song.id} match={match} index={index} saved={saved.has(match.song.id)} onToggle={() => toggleSaved(match.song.id)} band={band} />)}
+                {previewMatches.map((match, index) => <MatchCard key={match.song.id} match={match} index={index} saved={savedSongIds.has(match.song.id)} onToggle={() => toggleSaved(source.id, match.song.id)} band={band} />)}
               </div>
               {matches.length > MATCH_PREVIEW_SIZE && (
                 <div
@@ -897,8 +954,8 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
                           key={match.song.id}
                           match={match}
                           index={index + MATCH_PREVIEW_SIZE}
-                          saved={saved.has(match.song.id)}
-                          onToggle={() => toggleSaved(match.song.id)}
+                          saved={savedSongIds.has(match.song.id)}
+                          onToggle={() => toggleSaved(source.id, match.song.id)}
                           band={band}
                         />
                       ))}

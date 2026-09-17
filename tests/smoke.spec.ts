@@ -76,6 +76,49 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
   await expect(page.getByRole("option", { name: /Don't Stop Believin' Journey/ })).toBeVisible();
 });
 
+test("groups saved matches by the song each search started with", async ({ page }) => {
+  await useCatalog(page);
+  await page.goto("/");
+
+  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  await search.fill("Levitating");
+  await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
+  await page.getByRole("button", { name: /Flexible/ }).click();
+  await expect(page.locator(".match-card h3").first()).toHaveText("Stayin' Alive");
+
+  for (const title of ["Stayin' Alive", "Cole World"]) {
+    await page.locator(".match-card").filter({ hasText: title }).getByRole("button", { name: "Try this match" }).click();
+  }
+
+  await search.fill("Heat Waves");
+  await page.getByRole("option", { name: /Heat Waves Glass Animals/ }).click();
+  await page.getByRole("button", { name: /Explore/ }).click();
+  await expect(page.locator(".match-card h3").first()).toHaveText("Nosebleeds");
+
+  for (const title of ["Nosebleeds", "Levitating"]) {
+    await page.locator(".match-card").filter({ hasText: title }).getByRole("button", { name: "Try this match" }).click();
+  }
+
+  await page.getByRole("button", { name: /My set 4/ }).click();
+  const drawer = page.locator("#my-set-drawer");
+  await expect(drawer).toContainText("4 saved songs from 2 starting songs.");
+
+  const groups = drawer.locator(".set-group");
+  await expect(groups).toHaveCount(2);
+
+  await expect(groups.nth(0)).toContainText("Started with");
+  await expect(groups.nth(0)).toContainText("Levitating");
+  await expect(groups.nth(0)).toContainText("Stayin' Alive");
+  await expect(groups.nth(0)).toContainText("Cole World");
+  await expect(groups.nth(0)).toContainText("0.6% slower than base");
+
+  await expect(groups.nth(1)).toContainText("Started with");
+  await expect(groups.nth(1)).toContainText("Heat Waves");
+  await expect(groups.nth(1)).toContainText("Nosebleeds");
+  await expect(groups.nth(1)).toContainText("Levitating");
+  await expect(groups.nth(1)).toContainText("3.2% slower than base");
+});
+
 test("browses a genre and toggles between song and artist ordering", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");
