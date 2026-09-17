@@ -207,6 +207,7 @@ a { color: inherit; text-decoration: none; }
 .source-tile__bpm { position: absolute; right: 16px; bottom: -43px; width: 83px; height: 83px; border: 6px solid #090b1a; background: var(--acid); color: #111321; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column; transform: rotate(5deg); }
 .source-tile__bpm b { font: 800 21px/1 "Manrope"; }
 .source-tile__bpm small { margin-top: 3px; font-weight: 800; font-size: 8px; letter-spacing: 1.2px; }
+.source-tile__bpm--empty { background: #292c43; color: #8f90a5; }
 .tempo-line { position: absolute; z-index: 2; left: 67px; top: 242px; width: 390px; display: flex; align-items: center; gap: 9px; transform: rotate(-2deg); }
 .tempo-line span { height: 1px; flex: 1; background: linear-gradient(90deg, transparent, rgba(201,255,105,.5)); }
 .tempo-line span:last-child { background: linear-gradient(90deg, rgba(201,255,105,.5), transparent); }
@@ -224,6 +225,7 @@ a { color: inherit; text-decoration: none; }
 .artwork { position: relative; flex: none; overflow: hidden; border-radius: 10px; background: linear-gradient(145deg, var(--art-a), var(--art-b)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
 .artwork--large { width: 78px; height: 78px; }
 .artwork--small { width: 44px; height: 44px; border-radius: 8px; }
+.artwork--empty { display: grid; place-items: center; background: linear-gradient(145deg, #30334b, #171a2d); color: #85869a; }
 .artwork__rings { position: absolute; width: 115%; height: 115%; left: 28%; top: 28%; border: 1px solid rgba(255,255,255,.4); border-radius: 50%; box-shadow: 0 0 0 8px rgba(255,255,255,.08), 0 0 0 18px rgba(255,255,255,.08), 0 0 0 30px rgba(255,255,255,.07); }
 .artwork__initials { position: absolute; left: 8px; top: 7px; color: rgba(255,255,255,.92); font: 800 10px "Manrope"; letter-spacing: -.4px; text-shadow: 0 1px 7px rgba(0,0,0,.3); }
 .artwork--large .artwork__initials { left: 10px; top: 8px; font-size: 15px; }

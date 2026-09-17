@@ -625,7 +625,7 @@ function MySetDrawer({
 }
 
 function CatalogApp({ songs }: { songs: PreparedSong[] }) {
-  const [source, setSource] = useState<Song>(songs[0]);
+  const [source, setSource] = useState<Song | null>(null);
   const [band, setBand] = useState<MatchBand>("exact");
   const [showAll, setShowAll] = useState(false);
   const [matchLimit, setMatchLimit] = useState(MATCH_PREVIEW_SIZE + MATCH_PAGE_SIZE);
@@ -638,7 +638,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const searchResultsRef = useRef<HTMLElement>(null);
   const searchCloseTimerRef = useRef<number | null>(null);
   const cancelSearchScrollRef = useRef<(() => void) | null>(null);
-  const matches = useMemo(() => getMatches(songs, source, band), [songs, source, band]);
+  const matches = useMemo(() => source ? getMatches(songs, source, band) : [], [songs, source, band]);
   const songsById = useMemo(() => new Map(songs.map((song) => [song.id, song])), [songs]);
   const savedSongs = useMemo(
     () => Array.from(saved, (songId) => songsById.get(songId)).filter((song): song is PreparedSong => Boolean(song)),
@@ -755,9 +755,14 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
 
           <div className="hero__visual" aria-label="Song matching illustration">
             <div className="vinyl vinyl--back"><div className="vinyl__label" /></div>
-            <div className="source-tile"><p>Selected recording</p><Artwork song={source} /><div><strong>{source.title}</strong><span>{source.artist}</span></div><div className="source-tile__bpm"><b>{source.bpm.toFixed(1)}</b><small>EST. BPM</small></div></div>
+            <div className="source-tile">
+              <p>{source ? "Selected recording" : "Start here"}</p>
+              {source ? <Artwork song={source} /> : <div className="artwork artwork--large artwork--empty" aria-hidden="true"><Music2 size={24} /></div>}
+              <div><strong>{source?.title ?? "Choose a song"}</strong><span>{source?.artist ?? "Search or browse the catalog"}</span></div>
+              <div className={`source-tile__bpm ${source ? "" : "source-tile__bpm--empty"}`}><b>{source ? source.bpm.toFixed(1) : "—"}</b><small>EST. BPM</small></div>
+            </div>
             <div className="tempo-line"><span /><i>1</i><i>2</i><i>3</i><i>4</i><span /></div>
-            <div className="surprise-tile"><span className="surprise-tile__spark">✦</span><div><small>Closest tempo</small><strong>{matches[0]?.song.title ?? "Widen the range…"}</strong><span>{matches[0]?.song.artist}</span></div><div className="surprise-tile__match"><b>{matches[0] ? `${Math.abs(matches[0].difference).toFixed(1)}%` : "—"}</b><small>apart</small></div></div>
+            <div className="surprise-tile"><span className="surprise-tile__spark">✦</span><div><small>{source ? "Closest tempo" : "Then discover"}</small><strong>{source ? matches[0]?.song.title ?? "Widen the range…" : "Songs on the same beat"}</strong><span>{source ? matches[0]?.song.artist : "Your matches will appear after you choose"}</span></div><div className="surprise-tile__match"><b>{matches[0] ? `${Math.abs(matches[0].difference).toFixed(1)}%` : "—"}</b><small>apart</small></div></div>
             <div className="floating-note floating-note--one">♪</div><div className="floating-note floating-note--two">♫</div>
           </div>
         </section>
@@ -771,7 +776,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           onClose={collapseSearchResults}
         />
 
-        <section className="match-section" id="matches" ref={resultsRef}>
+        {source && <section className="match-section" id="matches" ref={resultsRef}>
           <div className="section-heading"><div><p className="eyebrow">Matched to your song</p><h2>Songs near <span>{source.bpm.toFixed(1)} estimated BPM</span></h2></div><button className="change-song" onClick={() => document.querySelector<HTMLInputElement>(".search-box input")?.focus()}><Search size={16} /> Change song</button></div>
           <div className="source-summary">
             <Artwork song={source} size="small" /><div className="source-summary__title"><small>Your base song</small><strong>{source.title} <span>· {source.artist}</span></strong></div>
@@ -836,7 +841,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
               <ArrowRight size={16} />
             </button>
           )}
-        </section>
+        </section>}
 
         <section className="how-section" id="how-it-works">
           <div className="how-section__intro"><p className="eyebrow">How it works</p><h2>One catalog.<br />Three tempo bands.</h2><p>Every BPM is an automatic estimate. Similar tempo is a useful starting point, not a promise that two songs will work musically.</p></div>

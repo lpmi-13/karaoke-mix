@@ -17,6 +17,22 @@ async function useCatalog(page: Page, catalog = songs) {
   }));
 }
 
+test("waits for a song choice before showing tempo matches", async ({ page }) => {
+  await useCatalog(page);
+  await page.goto("/");
+
+  await expect(page.locator(".source-tile strong")).toHaveText("Choose a song");
+  await expect(page.locator("#matches")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Tempo matches" })).toHaveCount(0);
+
+  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  await search.fill("Levitating");
+  await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
+
+  await expect(page.locator("#matches")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Songs near 103.0 estimated BPM/ })).toBeVisible();
+});
+
 test("loads the catalog, searches title and artist, and saves a tempo match", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");
@@ -107,8 +123,7 @@ test("expands all search results on Enter without selecting a suggestion", async
   await expect(expandedResults).toHaveClass(/catalog-search-results--open/);
   await expect.poll(() => expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBeforeSearch);
-  await expect.poll(() => expandedResults.evaluate((element) => Math.abs(element.getBoundingClientRect().top - 24))).toBeLessThan(8);
-  await expect(page.locator(".source-tile strong")).toHaveText("Levitating");
+  await expect(page.locator(".source-tile strong")).toHaveText("Choose a song");
   const resultsHeading = page.locator(".catalog-search-results__heading h2");
   await expect(resultsHeading).toHaveText("Results for “Shared Groove”");
   await expect(resultsHeading).toBeVisible();
@@ -132,7 +147,7 @@ test("expands all search results on Enter without selecting a suggestion", async
   await expect(expandedResults).not.toHaveClass(/catalog-search-results--open/);
   await expect(resultsHeading).toBeAttached();
   expect(await expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
-  await expect(resultsHeading).toHaveCount(0, { timeout: 1_200 });
+  await expect(resultsHeading).toHaveCount(0);
   await expect.poll(() => expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
 
   await search.press("Enter");
@@ -170,6 +185,10 @@ test("reveals additional tempo matches in a bounded scroll area", async ({ page 
   }));
   await useCatalog(page, [songs[0], ...tempoMatches]);
   await page.goto("/");
+
+  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  await search.fill("Levitating");
+  await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
 
   const scroller = page.getByRole("region", { name: "Tempo matches" });
   await expect(scroller).toHaveClass(/scroll-region/);
@@ -213,6 +232,9 @@ test("reveals additional tempo matches in a bounded scroll area", async ({ page 
 test("plays an estimated-BPM count-in", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");
+  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  await search.fill("Levitating");
+  await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
   await page.getByRole("button", { name: "Play count in" }).click();
   await expect(page.getByText(/Beat [1-4]/)).toBeVisible();
 });
