@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -12,6 +12,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   WandSparkles,
   X,
 } from "lucide-react";
@@ -33,6 +34,8 @@ import {
 
 const BROWSE_PAGE_SIZE = 80;
 const SEARCH_PAGE_SIZE = 80;
+const MATCH_PREVIEW_SIZE = 3;
+const MATCH_PAGE_SIZE = 60;
 const SEARCH_RESULTS_TRANSITION_MS = 672;
 const SEARCH_SCROLL_DURATION_MS = 864;
 const SEARCH_MOTION_CURVE = [0.22, 1, 0.36, 1] as const;
@@ -274,7 +277,7 @@ function SearchBox({
                     </div>
                   </div>
                 </div>
-                <div className="browse-list" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
+                <div className="browse-list scroll-region" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
                   {visibleBrowseSongs.map((song) => (
                     <SongResult key={song.id} song={song} onSelect={choose} />
                   ))}
@@ -289,7 +292,7 @@ function SearchBox({
               <>
                 <p className="search-results__label">{hasQuery ? "Best matches" : "Familiar songs"}</p>
                 <div
-                  className="search-results__list"
+                  className="search-results__list scroll-region"
                   role="listbox"
                   aria-label="Search results"
                 >
@@ -365,7 +368,7 @@ function CatalogSearchResults({
 
             {results.length ? (
               <div
-                className="catalog-search-results__list"
+                className="catalog-search-results__list scroll-region"
                 role="listbox"
                 aria-label={`All results for ${query}`}
                 onScroll={loadMore}
@@ -469,7 +472,7 @@ function MatchCard({
   );
 
   return (
-    <article className="match-card" style={{ "--delay": `${index * 70}ms` } as React.CSSProperties}>
+    <article className="match-card" style={{ "--delay": `${Math.min(index, 8) * 70}ms` } as React.CSSProperties}>
       <div className="match-card__rank">{String(index + 1).padStart(2, "0")}</div>
       <Artwork song={match.song} />
       <div className="match-card__body">
@@ -502,21 +505,153 @@ function MatchCard({
   );
 }
 
+function MySetDrawer({
+  songs,
+  open,
+  onClose,
+  onRemove,
+  onContinue,
+}: {
+  songs: Song[];
+  open: boolean;
+  onClose: () => void;
+  onRemove: (songId: string) => void;
+  onContinue: () => void;
+}) {
+  const panelRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      previouslyFocused?.focus();
+    };
+  }, [open, onClose]);
+
+  const keepFocusInDrawer = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab") return;
+    const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable?.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <div
+      className={`set-drawer ${open ? "set-drawer--open" : ""}`}
+      aria-hidden={!open}
+      inert={!open}
+    >
+      <div className="set-drawer__backdrop" onClick={onClose} />
+      <aside
+        className="set-drawer__panel"
+        id="my-set-drawer"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="my-set-title"
+        onKeyDown={keepFocusInDrawer}
+      >
+        <header className="set-drawer__header">
+          <div>
+            <p className="eyebrow"><Headphones size={14} /> Your selections</p>
+            <h2 id="my-set-title">My set <span>{songs.length}</span></h2>
+            <p>{songs.length ? `${songs.length} ${songs.length === 1 ? "song" : "songs"} ready to try together.` : "Build a shortlist of tempo matches to try."}</p>
+          </div>
+          <button ref={closeButtonRef} className="set-drawer__close" onClick={onClose} aria-label="Close my set">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="set-drawer__body scroll-region">
+          {songs.length ? (
+            <ul className="set-list">
+              {songs.map((song, index) => (
+                <li className="set-list__item" key={song.id}>
+                  <span className="set-list__number">{String(index + 1).padStart(2, "0")}</span>
+                  <Artwork song={song} size="small" />
+                  <div className="set-list__song">
+                    <strong>{song.title}</strong>
+                    <span>{song.artist}</span>
+                  </div>
+                  <div className="set-list__tempo">
+                    <strong>{song.bpm.toFixed(1)}</strong>
+                    <span>EST. BPM</span>
+                  </div>
+                  <button onClick={() => onRemove(song.id)} aria-label={`Remove ${song.title} by ${song.artist} from my set`}>
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="set-drawer__empty">
+              <span><Headphones size={27} /></span>
+              <h3>Your set is waiting</h3>
+              <p>Add a tempo match and it’ll appear here for easy comparison.</p>
+            </div>
+          )}
+        </div>
+
+        <footer className="set-drawer__footer">
+          <div><span>Set length</span><strong>{songs.length} {songs.length === 1 ? "track" : "tracks"}</strong></div>
+          <button onClick={onContinue}>{songs.length ? "Keep discovering" : "Browse matches"} <ArrowRight size={17} /></button>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
 function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const [source, setSource] = useState<Song>(songs[0]);
   const [band, setBand] = useState<MatchBand>("exact");
   const [showAll, setShowAll] = useState(false);
+  const [matchLimit, setMatchLimit] = useState(MATCH_PREVIEW_SIZE + MATCH_PAGE_SIZE);
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
+  const [setOpen, setSetOpen] = useState(false);
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
+  const matchResultsRef = useRef<HTMLDivElement>(null);
   const searchResultsRef = useRef<HTMLElement>(null);
   const searchCloseTimerRef = useRef<number | null>(null);
   const cancelSearchScrollRef = useRef<(() => void) | null>(null);
   const matches = useMemo(() => getMatches(songs, source, band), [songs, source, band]);
-  const visibleMatches = showAll ? matches : matches.slice(0, 3);
+  const songsById = useMemo(() => new Map(songs.map((song) => [song.id, song])), [songs]);
+  const savedSongs = useMemo(
+    () => Array.from(saved, (songId) => songsById.get(songId)).filter((song): song is PreparedSong => Boolean(song)),
+    [saved, songsById],
+  );
+  const previewMatches = matches.slice(0, MATCH_PREVIEW_SIZE);
+  const additionalMatches = matches.slice(MATCH_PREVIEW_SIZE, matchLimit);
 
-  useEffect(() => setShowAll(false), [source, band]);
+  useEffect(() => {
+    setShowAll(false);
+    setMatchLimit(MATCH_PREVIEW_SIZE + MATCH_PAGE_SIZE);
+    matchResultsRef.current?.scrollTo({ top: 0 });
+  }, [source, band]);
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -570,14 +705,43 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
     if (next.has(songId)) next.delete(songId); else next.add(songId);
     return next;
   });
+  const closeSet = useCallback(() => setSetOpen(false), []);
+  const continueMatching = useCallback(() => {
+    setSetOpen(false);
+    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  }, []);
+  const loadMoreMatches = (event: React.UIEvent<HTMLDivElement>) => {
+    const list = event.currentTarget;
+    if (list.scrollHeight - list.scrollTop - list.clientHeight > 160) return;
+    setMatchLimit((current) => Math.min(current + MATCH_PAGE_SIZE, matches.length));
+  };
+  const toggleMatchResults = () => {
+    if (showAll) matchResultsRef.current?.scrollTo({ top: 0 });
+    setShowAll((current) => !current);
+  };
 
   return (
     <div className="app-shell">
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Beatmatch home"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
         <nav aria-label="Main navigation"><a href="#matches">Discover</a><a href="#how-it-works">How it works</a><a href="#about">About</a></nav>
-        <button className="set-button"><Headphones size={17} /> My set <span>{saved.size}</span></button>
+        <button
+          className={`set-button ${setOpen ? "set-button--active" : ""}`}
+          onClick={() => setSetOpen(true)}
+          aria-expanded={setOpen}
+          aria-controls="my-set-drawer"
+        >
+          <Headphones size={17} /> My set <span>{saved.size}</span>
+        </button>
       </header>
+
+      <MySetDrawer
+        songs={savedSongs}
+        open={setOpen}
+        onClose={closeSet}
+        onRemove={toggleSaved}
+        onContinue={continueMatching}
+      />
 
       <main id="top">
         <section className="hero">
@@ -625,8 +789,53 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           </div>
           <div className="results-meta"><p><strong>{matches.length}</strong> tempo matches in {songs.length.toLocaleString()} songs</p><span><CircleHelp size={14} /> Sorted by BPM difference, quality, then familiarity</span></div>
 
-          {visibleMatches.length ? <div className="match-grid">{visibleMatches.map((match, index) => <MatchCard key={match.song.id} match={match} index={index} saved={saved.has(match.song.id)} onToggle={() => toggleSaved(match.song.id)} band={band} />)}</div> : <div className="no-matches"><Music2 size={28} /><h3>No songs in this tempo band</h3><p>Widen the range or choose another base song.</p></div>}
-          {!showAll && matches.length > 3 && <button className="show-more" onClick={() => setShowAll(true)}>Show {matches.length - 3} more matches <ArrowRight size={16} /></button>}
+          {previewMatches.length ? (
+            <div
+              ref={matchResultsRef}
+              className={`match-results scroll-region ${showAll ? "match-results--open" : ""}`}
+              id="tempo-match-results"
+              role="region"
+              aria-label="Tempo matches"
+              onScroll={loadMoreMatches}
+            >
+              <div className="match-grid">
+                {previewMatches.map((match, index) => <MatchCard key={match.song.id} match={match} index={index} saved={saved.has(match.song.id)} onToggle={() => toggleSaved(match.song.id)} band={band} />)}
+              </div>
+              {matches.length > MATCH_PREVIEW_SIZE && (
+                <div
+                  className={`match-results-more ${showAll ? "match-results-more--open" : ""}`}
+                  aria-hidden={!showAll}
+                  inert={!showAll}
+                >
+                  <div className="match-results-more__reveal">
+                    <div className="match-grid">
+                      {additionalMatches.map((match, index) => (
+                        <MatchCard
+                          key={match.song.id}
+                          match={match}
+                          index={index + MATCH_PREVIEW_SIZE}
+                          saved={saved.has(match.song.id)}
+                          onToggle={() => toggleSaved(match.song.id)}
+                          band={band}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : <div className="no-matches"><Music2 size={28} /><h3>No songs in this tempo band</h3><p>Widen the range or choose another base song.</p></div>}
+          {matches.length > MATCH_PREVIEW_SIZE && (
+            <button
+              className="show-more"
+              aria-expanded={showAll}
+              aria-controls="tempo-match-results"
+              onClick={toggleMatchResults}
+            >
+              {showAll ? "Show fewer matches" : `Show ${matches.length - MATCH_PREVIEW_SIZE} more matches`}
+              <ArrowRight size={16} />
+            </button>
+          )}
         </section>
 
         <section className="how-section" id="how-it-works">

@@ -35,7 +35,24 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
   const tryMatch = page.getByRole("button", { name: /Try this match/ }).first();
   await tryMatch.click();
   await expect(page.getByRole("button", { name: /Added to your set/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /My set 1/ })).toBeVisible();
+  const mySetButton = page.getByRole("button", { name: /My set 1/ });
+  await expect(mySetButton).toBeVisible();
+  await mySetButton.click();
+
+  const mySet = page.locator("#my-set-drawer");
+  await expect(mySet).toBeVisible();
+  await expect(mySet).toHaveAccessibleName("My set 1");
+  await expect(mySet.getByText("Stayin' Alive", { exact: true })).toBeVisible();
+  await expect(mySet.getByText("Bee Gees", { exact: true })).toBeVisible();
+  await expect(mySet.getByText("102.4", { exact: true })).toBeVisible();
+  await mySet.getByRole("button", { name: "Remove Stayin' Alive by Bee Gees from my set" }).click();
+  await expect(page.getByRole("button", { name: /My set 0/ })).toBeVisible();
+  await expect(mySet).toHaveAccessibleName("My set 0");
+  await expect(mySet.getByText("Your set is waiting")).toBeVisible();
+  await expect(tryMatch).toHaveAccessibleName("Try this match");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#my-set-drawer")).toBeHidden();
+  await expect(page.getByRole("button", { name: /My set 0/ })).toBeFocused();
 
   await search.fill("dua lipa");
   await expect(page.getByRole("option", { name: /Levitating Dua Lipa/ })).toBeVisible();
@@ -50,6 +67,7 @@ test("browses a genre and toggles between song and artist ordering", async ({ pa
   const browseGenres = page.getByRole("tab", { name: "Browse genres" });
   await expect(browseGenres).toBeVisible();
   await browseGenres.click();
+  await expect(page.locator(".browse-list")).toHaveClass(/scroll-region/);
   await expect(browseGenres).toHaveAttribute("aria-selected", "true");
   await page.getByRole("combobox", { name: "Browse by genre" }).selectOption("hip hop");
   await expect(page.getByText("3 songs", { exact: true })).toBeVisible();
@@ -79,7 +97,9 @@ test("expands all search results on Enter without selecting a suggestion", async
   const search = page.getByRole("textbox", { name: "Search a song or artist" });
   await search.fill("Shared Groove");
   await expect(page.getByText("Best matches", { exact: true })).toBeVisible();
-  await expect(page.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(8);
+  const suggestions = page.getByRole("listbox", { name: "Search results" });
+  await expect(suggestions).toHaveClass(/scroll-region/);
+  await expect(suggestions.getByRole("option")).toHaveCount(8);
 
   const scrollBeforeSearch = await page.evaluate(() => window.scrollY);
   await search.press("Enter");
@@ -94,6 +114,7 @@ test("expands all search results on Enter without selecting a suggestion", async
   await expect(resultsHeading).toBeVisible();
 
   const results = page.getByRole("listbox", { name: "All results for Shared Groove" });
+  await expect(results).toHaveClass(/scroll-region/);
   await expect(results.getByRole("option")).toHaveCount(20);
   const dimensions = await results.evaluate((element) => ({
     clientHeight: element.clientHeight,
@@ -135,6 +156,58 @@ test("uses exact, flexible, and exploratory thresholds", async ({ page }) => {
   await expect(page.getByText("4 tempo matches in 7 songs")).toBeVisible();
   await page.getByRole("button", { name: /Explore/ }).click();
   await expect(page.getByText("5 tempo matches in 7 songs")).toBeVisible();
+});
+
+test("reveals additional tempo matches in a bounded scroll area", async ({ page }) => {
+  const tempoMatches = Array.from({ length: 36 }, (_, index) => ({
+    id: `tempo-match-${index}`,
+    title: `Tempo Match ${String(index + 1).padStart(2, "0")}`,
+    artist: `Tempo Artist ${index + 1}`,
+    genres: ["dance"],
+    bpm: 103 + (index % 5) / 100,
+    tempoQuality: 0.99 - index / 1000,
+    listenerRank: index + 2,
+  }));
+  await useCatalog(page, [songs[0], ...tempoMatches]);
+  await page.goto("/");
+
+  const scroller = page.getByRole("region", { name: "Tempo matches" });
+  await expect(scroller).toHaveClass(/scroll-region/);
+  const reveal = page.locator(".match-results-more");
+  await expect(scroller.locator(".match-card").first()).toBeVisible();
+  await expect(scroller.locator(".match-card").nth(3)).toBeHidden();
+  expect(await reveal.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+
+  const toggle = page.locator(".show-more");
+  await expect(toggle).toHaveAccessibleName("Show 33 more matches");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toHaveAttribute("aria-controls", "tempo-match-results");
+  await expect.poll(() => reveal.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
+
+  await expect(scroller.locator(".match-card").nth(3)).toBeVisible();
+  const dimensions = await scroller.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    overflowY: getComputedStyle(element).overflowY,
+    scrollHeight: element.scrollHeight,
+    viewportHeight: window.innerHeight,
+  }));
+  expect(dimensions.overflowY).toBe("auto");
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
+  expect(dimensions.clientHeight).toBeLessThanOrEqual(dimensions.viewportHeight * 0.71);
+
+  await scroller.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => scroller.locator(".match-card").first().evaluate((card) => {
+    const cardBounds = card.getBoundingClientRect();
+    const scrollBounds = card.closest("#tempo-match-results")!.getBoundingClientRect();
+    return cardBounds.bottom > scrollBounds.top && cardBounds.top < scrollBounds.bottom;
+  })).toBe(false);
+
+  await page.getByRole("button", { name: "Show fewer matches" }).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(() => reveal.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
 });
 
 test("plays an estimated-BPM count-in", async ({ page }) => {
