@@ -123,6 +123,25 @@ function tempoRelationship(song: Song, source: Song): string {
   return `${Math.abs(difference).toFixed(1)}% ${difference > 0 ? "faster" : "slower"} than base`;
 }
 
+function handleListboxNavigation(event: React.KeyboardEvent<HTMLElement>) {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  const listbox = event.currentTarget;
+  const options = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]'));
+  if (!options.length) return;
+
+  event.preventDefault();
+  const currentIndex = options.indexOf(document.activeElement as HTMLElement);
+  let nextIndex = currentIndex;
+  if (event.key === "Home") nextIndex = 0;
+  else if (event.key === "End") nextIndex = options.length - 1;
+  else if (event.key === "ArrowDown") nextIndex = Math.min(currentIndex + 1, options.length - 1);
+  else nextIndex = currentIndex < 0 ? options.length - 1 : Math.max(currentIndex - 1, 0);
+  options.forEach((option) => { option.tabIndex = -1; });
+  if (listbox.tabIndex === 0) listbox.tabIndex = -1;
+  options[nextIndex].tabIndex = 0;
+  options[nextIndex].focus();
+}
+
 function Artwork({ song, size = "large" }: { song: Song; size?: "small" | "large" }) {
   const initials = song.artist
     .split(/\s+/)
@@ -143,9 +162,31 @@ function Artwork({ song, size = "large" }: { song: Song; size?: "small" | "large
   );
 }
 
-function SongResult({ song, onSelect }: { song: Song; onSelect: (song: Song) => void }) {
+function SongResult({
+  song,
+  onSelect,
+  id,
+  selected = false,
+  tabIndex = -1,
+  onPointerMove,
+}: {
+  song: Song;
+  onSelect: (song: Song) => void;
+  id?: string;
+  selected?: boolean;
+  tabIndex?: number;
+  onPointerMove?: () => void;
+}) {
   return (
-    <button className="search-result" onClick={() => onSelect(song)} role="option">
+    <button
+      className="search-result"
+      id={id}
+      onClick={() => onSelect(song)}
+      onPointerMove={onPointerMove}
+      role="option"
+      aria-selected={selected}
+      tabIndex={tabIndex}
+    >
       <Artwork song={song} size="small" />
       <span className="search-result__copy">
         <strong>{song.title}</strong>
@@ -172,6 +213,8 @@ function SearchBox({
   const [genreQuery, setGenreQuery] = useState("");
   const [sortBy, setSortBy] = useState<BrowseSort>("title");
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
+  const [activeSongIndex, setActiveSongIndex] = useState(-1);
+  const [activeGenreIndex, setActiveGenreIndex] = useState(-1);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const genreInputRef = useRef<HTMLInputElement>(null);
@@ -192,7 +235,39 @@ function SearchBox({
     onSelect(song);
     setQuery("");
     setOpen(false);
+    setActiveSongIndex(-1);
   };
+
+  const chooseGenre = (nextGenre: string) => {
+    setGenre(nextGenre);
+    setGenreQuery("");
+    setBrowseLimit(BROWSE_PAGE_SIZE);
+    setActiveGenreIndex(-1);
+    window.requestAnimationFrame(() => {
+      wrapperRef.current?.querySelector<HTMLElement>('.browse-list [role="option"]')?.focus();
+    });
+  };
+
+  const closeBrowser = () => {
+    setOpen(false);
+    window.requestAnimationFrame(() => {
+      if (browsing && genre) wrapperRef.current?.querySelector<HTMLElement>(".genre-selection-box__current")?.focus();
+      else if (browsing) genreInputRef.current?.focus();
+      else inputRef.current?.focus();
+    });
+  };
+
+  const selectFinderMode = (nextBrowsing: boolean) => {
+    if (nextBrowsing) setQuery("");
+    setBrowsing(nextBrowsing);
+    setOpen(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById(nextBrowsing ? "browse-genres-tab" : "search-songs-tab")?.focus();
+    });
+  };
+
+  useEffect(() => setActiveSongIndex(-1), [query]);
+  useEffect(() => setActiveGenreIndex(-1), [genreQuery]);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -203,14 +278,29 @@ function SearchBox({
   }, []);
 
   return (
-    <div className="search-wrap" id="song-picker" ref={wrapperRef}>
+    <div
+      className="search-wrap"
+      id="song-picker"
+      ref={wrapperRef}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <p className="finder-label">Choose how to find a starting song</p>
       <div className="finder-tabs" role="tablist" aria-label="Find a starting song">
         <button
+          id="search-songs-tab"
           className={!browsing ? "active" : ""}
           role="tab"
           aria-selected={!browsing}
           aria-controls="song-finder-panel"
+          tabIndex={browsing ? -1 : 0}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            if (event.key === "Home") document.getElementById("search-songs-tab")?.focus();
+            else selectFinderMode(true);
+          }}
           onClick={() => {
             setBrowsing(false);
             setOpen(true);
@@ -220,10 +310,18 @@ function SearchBox({
           <Search size={17} /> Search songs
         </button>
         <button
+          id="browse-genres-tab"
           className={browsing ? "active" : ""}
           role="tab"
           aria-selected={browsing}
           aria-controls="song-finder-panel"
+          tabIndex={browsing ? 0 : -1}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            if (event.key === "End") document.getElementById("browse-genres-tab")?.focus();
+            else selectFinderMode(false);
+          }}
           onClick={() => {
             setQuery("");
             setBrowsing(true);
@@ -235,7 +333,12 @@ function SearchBox({
         </button>
       </div>
 
-      <div className="search-panel" id="song-finder-panel" role="tabpanel">
+      <div
+        className="search-panel"
+        id="song-finder-panel"
+        role="tabpanel"
+        aria-labelledby={browsing ? "browse-genres-tab" : "search-songs-tab"}
+      >
         {browsing ? (
           genre ? (
             <div className={`genre-selection-box ${open ? "genre-selection-box--open" : ""}`}>
@@ -244,6 +347,7 @@ function SearchBox({
                 onClick={() => setOpen(true)}
                 aria-label={`Show ${genreLabel(genre)} songs`}
                 aria-expanded={open}
+                aria-controls={open ? "genre-song-browser" : undefined}
               >
                 <Library size={21} aria-hidden="true" />
                 <span><small>Selected genre</small><strong>{genreLabel(genre)}</strong></span>
@@ -272,16 +376,32 @@ function SearchBox({
                 }}
                 onFocus={() => setOpen(true)}
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") setOpen(false);
+                  if (event.key === "Escape") {
+                    setOpen(false);
+                    setActiveGenreIndex(-1);
+                  }
+                  if (["ArrowDown", "ArrowUp"].includes(event.key) && filteredGenres.length) {
+                    event.preventDefault();
+                    setOpen(true);
+                    setActiveGenreIndex((current) => event.key === "ArrowDown"
+                      ? Math.min(current + 1, filteredGenres.length - 1)
+                      : current < 0 ? filteredGenres.length - 1 : Math.max(current - 1, 0));
+                  }
+                  if (event.key === "Enter" && open && activeGenreIndex >= 0) {
+                    event.preventDefault();
+                    chooseGenre(filteredGenres[activeGenreIndex].name);
+                  }
                 }}
                 placeholder="Search genres"
                 aria-label="Search genres"
-                aria-expanded={open}
-                aria-controls="genre-options"
+                role="combobox"
+                aria-expanded={open && filteredGenres.length > 0}
+                aria-controls={open && filteredGenres.length ? "genre-options" : undefined}
                 aria-autocomplete="list"
+                aria-activedescendant={open && activeGenreIndex >= 0 ? `genre-option-${activeGenreIndex}` : undefined}
               />
               {genreQuery ? (
-                <button className="icon-button" onClick={() => setGenreQuery("")} aria-label="Clear genre search">
+                <button className="icon-button" onClick={() => { setGenreQuery(""); genreInputRef.current?.focus(); }} aria-label="Clear genre search">
                   <X size={18} />
                 </button>
               ) : (
@@ -301,20 +421,40 @@ function SearchBox({
               }}
               onFocus={() => setOpen(true)}
               onKeyDown={(event) => {
+                if (["ArrowDown", "ArrowUp"].includes(event.key) && results.length) {
+                  event.preventDefault();
+                  setOpen(true);
+                  setActiveSongIndex((current) => event.key === "ArrowDown"
+                    ? Math.min(current + 1, results.length - 1)
+                    : current < 0 ? results.length - 1 : Math.max(current - 1, 0));
+                  return;
+                }
+                if (event.key === "Enter" && open && activeSongIndex >= 0) {
+                  event.preventDefault();
+                  choose(results[activeSongIndex]);
+                  return;
+                }
                 if (event.key === "Enter" && hasQuery) {
                   event.preventDefault();
                   setOpen(false);
                   onSearch(query.trim());
                 }
-                if (event.key === "Escape") setOpen(false);
+                if (event.key === "Escape") {
+                  setOpen(false);
+                  setActiveSongIndex(-1);
+                }
               }}
               enterKeyHint="search"
               placeholder="Search a song or artist"
               aria-label="Search a song or artist"
-              aria-expanded={open}
+              role="combobox"
+              aria-expanded={open && results.length > 0}
+              aria-controls={open && results.length ? "song-search-options" : undefined}
+              aria-autocomplete="list"
+              aria-activedescendant={open && activeSongIndex >= 0 ? `song-option-${activeSongIndex}` : undefined}
             />
             {query ? (
-              <button className="icon-button" onClick={() => setQuery("")} aria-label="Clear search">
+              <button className="icon-button" onClick={() => { setQuery(""); inputRef.current?.focus(); }} aria-label="Clear search">
                 <X size={18} />
               </button>
             ) : (
@@ -324,13 +464,16 @@ function SearchBox({
         )}
 
         {open && (
-          <div className={`search-results ${browsing ? "search-results--browse" : ""}`}>
+          <div
+            className={`search-results ${browsing ? "search-results--browse" : ""}`}
+            id={browsing && genre ? "genre-song-browser" : undefined}
+          >
             {browsing ? (
               genre ? (
                 <>
                   <div className="browse-heading">
                     <div><span>{genreLabel(genre)} catalog</span><strong>{browsedSongs.length.toLocaleString()} {browsedSongs.length === 1 ? "song" : "songs"}</strong></div>
-                    <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close catalog browser"><X size={18} /></button>
+                    <button className="browse-close" onClick={closeBrowser} aria-label="Close catalog browser"><X size={18} /></button>
                   </div>
                   <div className="browse-controls browse-controls--songs">
                     <div className="browse-sort">
@@ -341,36 +484,40 @@ function SearchBox({
                       </div>
                     </div>
                   </div>
-                  <div className="browse-list scroll-region" role="listbox" aria-label={`${genreLabel(genre)} songs`}>
-                    {visibleBrowseSongs.map((song) => (
-                      <SongResult key={song.id} song={song} onSelect={choose} />
+                  <div
+                    className="browse-list scroll-region"
+                    role="listbox"
+                    aria-label={`${genreLabel(genre)} songs`}
+                    onKeyDown={handleListboxNavigation}
+                  >
+                    {visibleBrowseSongs.map((song, index) => (
+                      <SongResult key={song.id} song={song} onSelect={choose} tabIndex={index === 0 ? 0 : -1} />
                     ))}
-                    {visibleBrowseSongs.length < browsedSongs.length && (
-                      <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
-                        Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
-                      </button>
-                    )}
                   </div>
+                  {visibleBrowseSongs.length < browsedSongs.length && (
+                    <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
+                      Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
                   <div className="browse-heading">
                     <div><span>Browse the catalog</span><strong>{filteredGenres.length.toLocaleString()} {filteredGenres.length === 1 ? "genre" : "genres"}</strong></div>
-                    <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close genre browser"><X size={18} /></button>
+                    <button className="browse-close" onClick={closeBrowser} aria-label="Close genre browser"><X size={18} /></button>
                   </div>
                   {filteredGenres.length ? (
                     <div className="genre-list scroll-region" id="genre-options" role="listbox" aria-label="Genres">
-                      {filteredGenres.map((option) => (
+                      {filteredGenres.map((option, index) => (
                         <button
                           className="genre-option"
+                          id={`genre-option-${index}`}
                           key={option.name}
                           role="option"
-                          aria-selected="false"
-                          onClick={() => {
-                            setGenre(option.name);
-                            setGenreQuery("");
-                            setBrowseLimit(BROWSE_PAGE_SIZE);
-                          }}
+                          aria-selected={activeGenreIndex === index}
+                          tabIndex={-1}
+                          onPointerMove={() => setActiveGenreIndex(index)}
+                          onClick={() => chooseGenre(option.name)}
                         >
                           <strong>{genreLabel(option.name)}</strong>
                           <span>{option.count.toLocaleString()} {option.count === 1 ? "song" : "songs"}</span>
@@ -385,17 +532,27 @@ function SearchBox({
             ) : (
               <>
                 <p className="search-results__label">{hasQuery ? "Best matches" : "Familiar songs"}</p>
-                <div
-                  className="search-results__list scroll-region"
-                  role="listbox"
-                  aria-label="Search results"
-                >
-                  {results.length ? results.map((song) => (
-                    <SongResult key={song.id} song={song} onSelect={choose} />
-                  )) : (
-                    <div className="empty-search">No direct match. Try browsing by genre instead.</div>
-                  )}
-                </div>
+                {results.length ? (
+                  <div
+                    className="search-results__list scroll-region"
+                    id="song-search-options"
+                    role="listbox"
+                    aria-label="Search results"
+                  >
+                    {results.map((song, index) => (
+                    <SongResult
+                      key={song.id}
+                      song={song}
+                      onSelect={choose}
+                      id={`song-option-${index}`}
+                      selected={activeSongIndex === index}
+                      onPointerMove={() => setActiveSongIndex(index)}
+                    />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-search" role="status">No direct match. Try browsing by genre instead.</div>
+                )}
               </>
             )}
           </div>
@@ -445,6 +602,8 @@ function CatalogSearchResults({
       ref={sectionRef}
       className={`catalog-search-results ${expanded ? "catalog-search-results--open" : ""}`}
       id="catalog-search-results"
+      tabIndex={-1}
+      aria-labelledby={query ? "catalog-search-heading" : undefined}
       aria-hidden={!expanded}
       inert={!expanded}
     >
@@ -454,7 +613,7 @@ function CatalogSearchResults({
             <div className="catalog-search-results__heading">
               <div>
                 <p className="eyebrow"><Search size={14} /> Catalog search</p>
-                <h2>Results for <span>“{query}”</span></h2>
+                <h2 id="catalog-search-heading">Results for <span>“{query}”</span></h2>
                 <p>{results.length.toLocaleString()} {results.length === 1 ? "song" : "songs"} found. Select one to use it as your starting song.</p>
               </div>
               <button onClick={onClose} aria-label="Close search results"><X size={19} /></button>
@@ -465,6 +624,8 @@ function CatalogSearchResults({
                 className="catalog-search-results__list scroll-region"
                 role="listbox"
                 aria-label={`All results for ${query}`}
+                tabIndex={0}
+                onKeyDown={handleListboxNavigation}
                 onScroll={loadMore}
               >
                 {visibleResults.map((song) => <SongResult key={song.id} song={song} onSelect={onSelect} />)}
@@ -528,7 +689,12 @@ function CountIn({ bpm }: { bpm: number }) {
   };
 
   return (
-    <button className="count-in" onClick={start} aria-label={playing ? "Stop count in" : "Play count in"}>
+    <button
+      className="count-in"
+      onClick={start}
+      aria-label={playing ? "Stop count in" : "Play count in"}
+      aria-pressed={playing}
+    >
       <span className={`count-in__icon ${playing ? "count-in__icon--playing" : ""}`}>
         {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
       </span>
@@ -566,13 +732,25 @@ function MatchCard({
   );
 
   return (
-    <article className="match-card" style={{ "--delay": `${Math.min(index, 8) * 70}ms` } as React.CSSProperties}>
+    <article
+      className="match-card"
+      aria-labelledby={`match-title-${match.song.id}`}
+      style={{ "--delay": `${Math.min(index, 8) * 70}ms` } as React.CSSProperties}
+    >
       <div className="match-card__rank">{String(index + 1).padStart(2, "0")}</div>
       <Artwork song={match.song} />
       <div className="match-card__body">
         <div className="match-card__heading">
-          <div><h3>{match.song.title}</h3><p>{match.song.artist}</p></div>
-          <div className="score-ring" style={{ "--score": `${score * 3.6}deg` } as React.CSSProperties}>
+          <div><h3 id={`match-title-${match.song.id}`}>{match.song.title}</h3><p>{match.song.artist}</p></div>
+          <div
+            className="score-ring"
+            role="meter"
+            aria-label="Match score"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={score}
+            style={{ "--score": `${score * 3.6}deg` } as React.CSSProperties}
+          >
             <span>{score}</span>
           </div>
         </div>
@@ -589,7 +767,12 @@ function MatchCard({
           <span className="tag"><Music2 size={13} /> Automatic estimate</span>
         </div>
 
-        <button className="try-button" onClick={onToggle}>
+        <button
+          className="try-button"
+          onClick={onToggle}
+          aria-label={`Save ${match.song.title} by ${match.song.artist} to my set`}
+          aria-pressed={saved}
+        >
           {saved ? <Check size={17} /> : <WandSparkles size={17} />}
           {saved ? "Added to your set" : "Try this match"}
           {!saved && <ArrowRight size={17} />}
@@ -653,13 +836,21 @@ function MySetDrawer({
     }
   };
 
+  const removeMatch = (sourceId: string, songId: string) => {
+    onRemove(sourceId, songId);
+    window.requestAnimationFrame(() => {
+      const nextRemoveButton = panelRef.current?.querySelector<HTMLButtonElement>(".set-list__item > button");
+      (nextRemoveButton ?? closeButtonRef.current)?.focus();
+    });
+  };
+
   return (
     <div
       className={`set-drawer ${open ? "set-drawer--open" : ""}`}
       aria-hidden={!open}
       inert={!open}
     >
-      <div className="set-drawer__backdrop" onClick={onClose} />
+      <div className="set-drawer__backdrop" onClick={onClose} aria-hidden="true" />
       <aside
         className="set-drawer__panel"
         id="my-set-drawer"
@@ -667,13 +858,14 @@ function MySetDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="my-set-title"
+        aria-describedby="my-set-description"
         onKeyDown={keepFocusInDrawer}
       >
         <header className="set-drawer__header">
           <div>
             <p className="eyebrow"><Headphones size={14} /> Your selections</p>
             <h2 id="my-set-title">My set <span>{selectionCount}</span></h2>
-            <p>{selectionCount
+            <p id="my-set-description">{selectionCount
               ? `${selectionCount} saved ${selectionCount === 1 ? "song" : "songs"} from ${groups.length} starting ${groups.length === 1 ? "song" : "songs"}.`
               : "Build a shortlist of tempo matches to try."}</p>
           </div>
@@ -719,7 +911,7 @@ function MySetDrawer({
                             <strong>{song.bpm.toFixed(1)}</strong>
                             <span>EST. BPM</span>
                           </div>
-                          <button onClick={() => onRemove(group.source.id, song.id)} aria-label={`Remove ${song.title} by ${song.artist} from my set`}>
+                          <button onClick={() => removeMatch(group.source.id, song.id)} aria-label={`Remove ${song.title} by ${song.artist} from my set`}>
                             <Trash2 size={16} />
                           </button>
                         </li>
@@ -802,21 +994,30 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
     cancelSearchScrollRef.current?.();
   }, []);
 
-  const collapseSearchResults = () => {
+  const collapseSearchResults = (restoreSearchFocus = true) => {
     setSearchExpanded(false);
     cancelSearchScrollRef.current?.();
     if (searchCloseTimerRef.current !== null) window.clearTimeout(searchCloseTimerRef.current);
+    const closeDelay = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : SEARCH_RESULTS_TRANSITION_MS;
     searchCloseTimerRef.current = window.setTimeout(() => {
       setSubmittedQuery(null);
       searchCloseTimerRef.current = null;
-    }, SEARCH_RESULTS_TRANSITION_MS);
+      if (restoreSearchFocus) document.querySelector<HTMLInputElement>('.search-box input')?.focus();
+    }, closeDelay);
   };
 
   const chooseSong = (song: Song) => {
-    const collapseDelay = searchExpanded ? SEARCH_RESULTS_TRANSITION_MS : 0;
-    collapseSearchResults();
+    const collapseDelay = searchExpanded && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? SEARCH_RESULTS_TRANSITION_MS
+      : 0;
+    collapseSearchResults(false);
     setSource(song);
-    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), collapseDelay + 100);
+    window.setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      resultsRef.current?.focus({ preventScroll: true });
+    }, collapseDelay + 100);
   };
   const showSearchResults = (query: string) => {
     if (searchCloseTimerRef.current !== null) {
@@ -830,7 +1031,10 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
       window.requestAnimationFrame(() => {
         setSearchExpanded(true);
         window.requestAnimationFrame(() => {
-          if (searchResultsRef.current) cancelSearchScrollRef.current = animateScrollTo(searchResultsRef.current);
+          if (searchResultsRef.current) {
+            cancelSearchScrollRef.current = animateScrollTo(searchResultsRef.current);
+            searchResultsRef.current.focus({ preventScroll: true });
+          }
         });
       });
     });
@@ -843,7 +1047,10 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const closeSet = useCallback(() => setSetOpen(false), []);
   const continueMatching = useCallback(() => {
     setSetOpen(false);
-    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    window.setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      resultsRef.current?.focus({ preventScroll: true });
+    }, 100);
   }, []);
   const loadMoreMatches = (event: React.UIEvent<HTMLDivElement>) => {
     const list = event.currentTarget;
@@ -857,9 +1064,10 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
 
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <a className="brand" href="#top" aria-label="Beatmatch home"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
-        <nav aria-label="Main navigation"><a href="#matches">Discover</a><a href="#how-it-works">How it works</a><a href="#about">About</a></nav>
+      <a className="skip-link" href="#main-content" inert={setOpen}>Skip to main content</a>
+      <header className="site-header" inert={setOpen}>
+        <a className="brand" href="#main-content" aria-label="Beatmatch home"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
+        <nav aria-label="Main navigation"><a href="#song-picker">Discover</a><a href="#how-it-works">How it works</a><a href="#about">About</a></nav>
         <button
           className={`set-button ${setOpen ? "set-button--active" : ""}`}
           onClick={() => setSetOpen(true)}
@@ -878,7 +1086,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
         onContinue={continueMatching}
       />
 
-      <main id="top">
+      <main id="main-content" tabIndex={-1} inert={setOpen}>
         <section className="hero">
           <div className="hero__glow hero__glow--one" /><div className="hero__glow hero__glow--two" />
           <div className="hero__copy">
@@ -895,11 +1103,11 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           query={submittedQuery}
           expanded={searchExpanded}
           onSelect={chooseSong}
-          onClose={collapseSearchResults}
+          onClose={() => collapseSearchResults()}
         />
 
-        {source && <section className="match-section" id="matches" ref={resultsRef}>
-          <div className="section-heading"><div><p className="eyebrow">Matched to your song</p><h2>Songs near <span>{source.bpm.toFixed(1)} estimated BPM</span></h2></div><button className="change-song" onClick={() => document.querySelector<HTMLInputElement>(".search-box input")?.focus()}><Search size={16} /> Change song</button></div>
+        {source && <section className="match-section" id="matches" ref={resultsRef} tabIndex={-1} aria-labelledby="matches-heading">
+          <div className="section-heading"><div><p className="eyebrow">Matched to your song</p><h2 id="matches-heading">Songs near <span>{source.bpm.toFixed(1)} estimated BPM</span></h2></div><button className="change-song" onClick={() => document.querySelector<HTMLInputElement>(".search-box input")?.focus()}><Search size={16} /> Change song</button></div>
           <div className="source-summary">
             <Artwork song={source} size="small" /><div className="source-summary__title"><small>Your base song</small><strong>{source.title} <span>· {source.artist}</span></strong></div>
             <div className="source-summary__fact"><small>Estimated tempo</small><strong>{source.bpm.toFixed(1)} BPM</strong></div>
@@ -908,13 +1116,13 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           </div>
 
           <div className="match-toolbar">
-            <div className="segmented" aria-label="Tempo matching band">
-              <button className={band === "exact" ? "active" : ""} onClick={() => setBand("exact")}>Exact <span>±0.5%</span></button>
-              <button className={band === "close" ? "active" : ""} onClick={() => setBand("close")}>Flexible <span>±2%</span></button>
-              <button className={band === "exploratory" ? "active" : ""} onClick={() => setBand("exploratory")}>Explore <span>±5%</span></button>
+            <div className="segmented" role="group" aria-label="Tempo matching band">
+              <button className={band === "exact" ? "active" : ""} aria-pressed={band === "exact"} onClick={() => setBand("exact")}>Exact <span>±0.5%</span></button>
+              <button className={band === "close" ? "active" : ""} aria-pressed={band === "close"} onClick={() => setBand("close")}>Flexible <span>±2%</span></button>
+              <button className={band === "exploratory" ? "active" : ""} aria-pressed={band === "exploratory"} onClick={() => setBand("exploratory")}>Explore <span>±5%</span></button>
             </div>
           </div>
-          <div className="results-meta"><p><strong>{matches.length}</strong> tempo matches in {songs.length.toLocaleString()} songs</p><span><CircleHelp size={14} /> Sorted by BPM difference, quality, then familiarity</span></div>
+          <div className="results-meta"><p aria-live="polite" aria-atomic="true"><strong>{matches.length}</strong> tempo matches in {songs.length.toLocaleString()} songs</p><span><CircleHelp size={14} /> Sorted by BPM difference, quality, then familiarity</span></div>
 
           {previewMatches.length ? (
             <div
@@ -971,8 +1179,8 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
         </section>
       </main>
 
-      <footer id="about">
-        <a className="brand" href="#top"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
+      <footer id="about" inert={setOpen}>
+        <a className="brand" href="#main-content" aria-label="Beatmatch home"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
         <p>Estimated tempo data from <a href="https://acousticbrainz.org/download">AcousticBrainz</a>, identity from <a href="https://musicbrainz.org/">MusicBrainz</a>, and familiarity from <a href="https://listenbrainz.org/">ListenBrainz</a>.</p>
         <span>No lyrics, audio, or provider media hosted</span>
       </footer>

@@ -27,7 +27,7 @@ test("waits for a song choice before showing tempo matches", async ({ page }) =>
   await expect(page.locator("#matches")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Tempo matches" })).toHaveCount(0);
 
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Levitating");
   await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
 
@@ -41,7 +41,7 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
 
   await expect(page.getByRole("heading", { name: /mix lyrics from one song into another/i })).toBeVisible();
 
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Levitating");
   await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
   await expect(page.getByRole("heading", { name: /Songs near 103.0 estimated BPM/ })).toBeVisible();
@@ -50,9 +50,9 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
   await expect(page.locator(".match-card h3").first()).toHaveText("Stayin' Alive");
   await expect(page.locator(".match-card h3").filter({ hasText: "Levitating" })).toHaveCount(0);
 
-  const tryMatch = page.getByRole("button", { name: /Try this match/ }).first();
+  const tryMatch = page.getByRole("button", { name: /Save Stayin' Alive by Bee Gees to my set/ });
   await tryMatch.click();
-  await expect(page.getByRole("button", { name: /Added to your set/ }).first()).toBeVisible();
+  await expect(tryMatch).toHaveAttribute("aria-pressed", "true");
   const mySetButton = page.getByRole("button", { name: /My set 1/ });
   await expect(mySetButton).toBeVisible();
   await mySetButton.click();
@@ -67,7 +67,7 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
   await expect(page.getByRole("button", { name: /My set 0/ })).toBeVisible();
   await expect(mySet).toHaveAccessibleName("My set 0");
   await expect(mySet.getByText("Your set is waiting")).toBeVisible();
-  await expect(tryMatch).toHaveAccessibleName("Try this match");
+  await expect(tryMatch).toHaveAttribute("aria-pressed", "false");
   await page.keyboard.press("Escape");
   await expect(page.locator("#my-set-drawer")).toBeHidden();
   await expect(page.getByRole("button", { name: /My set 0/ })).toBeFocused();
@@ -82,14 +82,14 @@ test("groups saved matches by the song each search started with", async ({ page 
   await useCatalog(page);
   await page.goto("/");
 
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Levitating");
   await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
   await page.getByRole("button", { name: /Flexible/ }).click();
   await expect(page.locator(".match-card h3").first()).toHaveText("Stayin' Alive");
 
   for (const title of ["Stayin' Alive", "Cole World"]) {
-    await page.locator(".match-card").filter({ hasText: title }).getByRole("button", { name: "Try this match" }).click();
+    await page.locator(".match-card").filter({ hasText: title }).getByRole("button", { name: /Save .+ to my set/ }).click();
   }
 
   await search.fill("Heat Waves");
@@ -98,7 +98,7 @@ test("groups saved matches by the song each search started with", async ({ page 
   await expect(page.locator(".match-card h3").first()).toHaveText("Nosebleeds");
 
   for (const title of ["Nosebleeds", "Levitating"]) {
-    await page.locator(".match-card").filter({ hasText: title }).getByRole("button", { name: "Try this match" }).click();
+    await page.locator(".match-card").filter({ hasText: title }).getByRole("button", { name: /Save .+ to my set/ }).click();
   }
 
   await page.getByRole("button", { name: /My set 4/ }).click();
@@ -129,10 +129,10 @@ test("browses a genre and toggles between song and artist ordering", async ({ pa
   await expect(browseGenres).toBeVisible();
   await browseGenres.click();
   await expect(browseGenres).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("textbox", { name: "Search genres" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Search genres" })).toBeVisible();
   await expect(page.getByRole("listbox", { name: "Genres" })).toHaveClass(/scroll-region/);
   await expect(page.locator(".browse-list .search-result")).toHaveCount(0);
-  await page.getByRole("textbox", { name: "Search genres" }).fill("hip");
+  await page.getByRole("combobox", { name: "Search genres" }).fill("hip");
   await page.getByRole("option", { name: "Hip Hop 3 songs" }).click();
   await expect(page.locator(".browse-list")).toHaveClass(/scroll-region/);
   await expect(page.getByRole("button", { name: "Change genre" })).toBeVisible();
@@ -164,7 +164,7 @@ test("expands all search results on Enter without selecting a suggestion", async
   const expandedResults = page.locator("#catalog-search-results");
   expect(await expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
 
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Shared Groove");
   await expect(page.getByText("Best matches", { exact: true })).toBeVisible();
   const suggestions = page.getByRole("listbox", { name: "Search results" });
@@ -216,7 +216,7 @@ test("expands all search results on Enter without selecting a suggestion", async
 test("uses exact, flexible, and exploratory thresholds", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Levitating");
   await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
 
@@ -240,7 +240,7 @@ test("reveals additional tempo matches in a bounded scroll area", async ({ page 
   await useCatalog(page, [songs[0], ...tempoMatches]);
   await page.goto("/");
 
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Levitating");
   await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
 
@@ -286,7 +286,7 @@ test("reveals additional tempo matches in a bounded scroll area", async ({ page 
 test("plays an estimated-BPM count-in", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");
-  const search = page.getByRole("textbox", { name: "Search a song or artist" });
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
   await search.fill("Levitating");
   await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
   await page.getByRole("button", { name: "Play count in" }).click();

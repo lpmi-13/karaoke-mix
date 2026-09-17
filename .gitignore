@@ -35,3 +35,4 @@ notes.txt
 
 *.md
 !README.md
+!ACCESSIBILITY.md
