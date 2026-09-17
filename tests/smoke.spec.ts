@@ -83,15 +83,24 @@ test("browses a genre and toggles between song and artist ordering", async ({ pa
   const browseGenres = page.getByRole("tab", { name: "Browse genres" });
   await expect(browseGenres).toBeVisible();
   await browseGenres.click();
-  await expect(page.locator(".browse-list")).toHaveClass(/scroll-region/);
   await expect(browseGenres).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("combobox", { name: "Browse by genre" }).selectOption("hip hop");
+  await expect(page.getByRole("textbox", { name: "Search genres" })).toBeVisible();
+  await expect(page.getByRole("listbox", { name: "Genres" })).toHaveClass(/scroll-region/);
+  await expect(page.locator(".browse-list .search-result")).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Search genres" }).fill("hip");
+  await page.getByRole("option", { name: "Hip Hop 3 songs" }).click();
+  await expect(page.locator(".browse-list")).toHaveClass(/scroll-region/);
+  await expect(page.getByRole("button", { name: "Change genre" })).toBeVisible();
   await expect(page.getByText("3 songs", { exact: true })).toBeVisible();
   await expect(page.locator(".browse-list .search-result strong").first()).toHaveText("Cole World");
 
-  await page.getByRole("button", { name: "Artist", pressed: false }).click();
+  await page.getByRole("button", { name: "Artist name", pressed: false }).click();
   await expect(page.locator(".browse-list .search-result strong").first()).toHaveText("Nosebleeds");
-  await expect(page.getByRole("button", { name: "Artist", pressed: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Artist name", pressed: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Change genre" }).click();
+  await expect(page.getByRole("listbox", { name: "Genres" })).toBeVisible();
+  await expect(page.locator(".browse-list .search-result")).toHaveCount(0);
 });
 
 test("expands all search results on Enter without selecting a suggestion", async ({ page }) => {

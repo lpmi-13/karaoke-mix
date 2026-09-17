@@ -153,14 +153,23 @@ function SearchBox({
   const [open, setOpen] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [genre, setGenre] = useState("");
+  const [genreQuery, setGenreQuery] = useState("");
   const [sortBy, setSortBy] = useState<BrowseSort>("title");
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const genreInputRef = useRef<HTMLInputElement>(null);
   const hasQuery = normaliseSearch(query).length > 0;
   const results = useMemo(() => searchSongs(songs, query), [query, songs]);
   const genres = useMemo(() => getGenreOptions(songs), [songs]);
-  const browsedSongs = useMemo(() => browseSongs(songs, genre, sortBy), [genre, songs, sortBy]);
+  const filteredGenres = useMemo(() => {
+    const term = normaliseSearch(genreQuery);
+    return term ? genres.filter((option) => normaliseSearch(option.name).includes(term)) : genres;
+  }, [genreQuery, genres]);
+  const browsedSongs = useMemo(
+    () => genre ? browseSongs(songs, genre, sortBy) : [],
+    [genre, songs, sortBy],
+  );
   const visibleBrowseSongs = browsedSongs.slice(0, browseLimit);
 
   const choose = (song: Song) => {
@@ -203,6 +212,7 @@ function SearchBox({
             setQuery("");
             setBrowsing(true);
             setOpen(true);
+            if (!genre) window.requestAnimationFrame(() => genreInputRef.current?.focus());
           }}
         >
           <Library size={17} /> Browse genres
@@ -210,84 +220,152 @@ function SearchBox({
       </div>
 
       <div className="search-panel" id="song-finder-panel" role="tabpanel">
-        <div className={`search-box ${open ? "search-box--open" : ""}`}>
-          <Search size={21} aria-hidden="true" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setBrowsing(false);
-              setOpen(true);
-            }}
-            onFocus={() => {
-              setBrowsing(false);
-              setOpen(true);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && hasQuery) {
-                event.preventDefault();
-                setOpen(false);
-                onSearch(query.trim());
-              }
-              if (event.key === "Escape") setOpen(false);
-            }}
-            enterKeyHint="search"
-            placeholder="Search a song or artist"
-            aria-label="Search a song or artist"
-            aria-expanded={open}
-          />
-          {query ? (
-            <button className="icon-button" onClick={() => setQuery("")} aria-label="Clear search">
-              <X size={18} />
-            </button>
+        {browsing ? (
+          genre ? (
+            <div className={`genre-selection-box ${open ? "genre-selection-box--open" : ""}`}>
+              <button
+                className="genre-selection-box__current"
+                onClick={() => setOpen(true)}
+                aria-label={`Show ${genreLabel(genre)} songs`}
+                aria-expanded={open}
+              >
+                <Library size={21} aria-hidden="true" />
+                <span><small>Selected genre</small><strong>{genreLabel(genre)}</strong></span>
+              </button>
+              <button
+                className="genre-selection-box__change"
+                onClick={() => {
+                  setGenre("");
+                  setGenreQuery("");
+                  setOpen(true);
+                  window.requestAnimationFrame(() => genreInputRef.current?.focus());
+                }}
+              >
+                Change genre
+              </button>
+            </div>
           ) : (
-            <span className="key-hint">⌘ K</span>
-          )}
-        </div>
+            <div className={`search-box genre-search-box ${open ? "search-box--open" : ""}`}>
+              <Library size={21} aria-hidden="true" />
+              <input
+                ref={genreInputRef}
+                value={genreQuery}
+                onChange={(event) => {
+                  setGenreQuery(event.target.value);
+                  setOpen(true);
+                }}
+                onFocus={() => setOpen(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setOpen(false);
+                }}
+                placeholder="Search genres"
+                aria-label="Search genres"
+                aria-expanded={open}
+                aria-controls="genre-options"
+                aria-autocomplete="list"
+              />
+              {genreQuery ? (
+                <button className="icon-button" onClick={() => setGenreQuery("")} aria-label="Clear genre search">
+                  <X size={18} />
+                </button>
+              ) : (
+                <span className="genre-search-box__hint">Choose one</span>
+              )}
+            </div>
+          )
+        ) : (
+          <div className={`search-box ${open ? "search-box--open" : ""}`}>
+            <Search size={21} aria-hidden="true" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => setOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && hasQuery) {
+                  event.preventDefault();
+                  setOpen(false);
+                  onSearch(query.trim());
+                }
+                if (event.key === "Escape") setOpen(false);
+              }}
+              enterKeyHint="search"
+              placeholder="Search a song or artist"
+              aria-label="Search a song or artist"
+              aria-expanded={open}
+            />
+            {query ? (
+              <button className="icon-button" onClick={() => setQuery("")} aria-label="Clear search">
+                <X size={18} />
+              </button>
+            ) : (
+              <span className="key-hint">⌘ K</span>
+            )}
+          </div>
+        )}
 
         {open && (
           <div className={`search-results ${browsing ? "search-results--browse" : ""}`}>
             {browsing ? (
-              <>
-                <div className="browse-heading">
-                  <div><span>Browse the catalog by genre</span><strong>{browsedSongs.length.toLocaleString()} songs</strong></div>
-                  <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close catalog browser"><X size={18} /></button>
-                </div>
-                <div className="browse-controls">
-                  <label>
-                    <span>Choose a genre</span>
-                    <select
-                      aria-label="Browse by genre"
-                      value={genre}
-                      onChange={(event) => {
-                        setGenre(event.target.value);
-                        setBrowseLimit(BROWSE_PAGE_SIZE);
-                      }}
-                    >
-                      <option value="">All genres</option>
-                      {genres.map((option) => <option key={option.name} value={option.name}>{genreLabel(option.name)} ({option.count.toLocaleString()})</option>)}
-                    </select>
-                  </label>
-                  <div className="browse-sort">
-                    <span>Order by</span>
-                    <div role="group" aria-label="Order songs by">
-                      <button className={sortBy === "title" ? "active" : ""} aria-pressed={sortBy === "title"} onClick={() => { setSortBy("title"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Song title</button>
-                      <button className={sortBy === "artist" ? "active" : ""} aria-pressed={sortBy === "artist"} onClick={() => { setSortBy("artist"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Artist</button>
+              genre ? (
+                <>
+                  <div className="browse-heading">
+                    <div><span>{genreLabel(genre)} catalog</span><strong>{browsedSongs.length.toLocaleString()} {browsedSongs.length === 1 ? "song" : "songs"}</strong></div>
+                    <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close catalog browser"><X size={18} /></button>
+                  </div>
+                  <div className="browse-controls browse-controls--songs">
+                    <div className="browse-sort">
+                      <span>Order songs by</span>
+                      <div role="group" aria-label="Order songs by">
+                        <button className={sortBy === "title" ? "active" : ""} aria-pressed={sortBy === "title"} onClick={() => { setSortBy("title"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Song title</button>
+                        <button className={sortBy === "artist" ? "active" : ""} aria-pressed={sortBy === "artist"} onClick={() => { setSortBy("artist"); setBrowseLimit(BROWSE_PAGE_SIZE); }}>Artist name</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="browse-list scroll-region" role="listbox" aria-label={genre ? `${genreLabel(genre)} songs` : "All songs"}>
-                  {visibleBrowseSongs.map((song) => (
-                    <SongResult key={song.id} song={song} onSelect={choose} />
-                  ))}
-                  {visibleBrowseSongs.length < browsedSongs.length && (
-                    <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
-                      Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
-                    </button>
+                  <div className="browse-list scroll-region" role="listbox" aria-label={`${genreLabel(genre)} songs`}>
+                    {visibleBrowseSongs.map((song) => (
+                      <SongResult key={song.id} song={song} onSelect={choose} />
+                    ))}
+                    {visibleBrowseSongs.length < browsedSongs.length && (
+                      <button className="browse-more" onClick={() => setBrowseLimit((current) => current + BROWSE_PAGE_SIZE)}>
+                        Show {Math.min(BROWSE_PAGE_SIZE, browsedSongs.length - visibleBrowseSongs.length)} more
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="browse-heading">
+                    <div><span>Browse the catalog</span><strong>{filteredGenres.length.toLocaleString()} {filteredGenres.length === 1 ? "genre" : "genres"}</strong></div>
+                    <button className="browse-close" onClick={() => setOpen(false)} aria-label="Close genre browser"><X size={18} /></button>
+                  </div>
+                  {filteredGenres.length ? (
+                    <div className="genre-list scroll-region" id="genre-options" role="listbox" aria-label="Genres">
+                      {filteredGenres.map((option) => (
+                        <button
+                          className="genre-option"
+                          key={option.name}
+                          role="option"
+                          aria-selected="false"
+                          onClick={() => {
+                            setGenre(option.name);
+                            setGenreQuery("");
+                            setBrowseLimit(BROWSE_PAGE_SIZE);
+                          }}
+                        >
+                          <strong>{genreLabel(option.name)}</strong>
+                          <span>{option.count.toLocaleString()} {option.count === 1 ? "song" : "songs"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-search">No genres match “{genreQuery}”.</div>
                   )}
-                </div>
-              </>
+                </>
+              )
             ) : (
               <>
                 <p className="search-results__label">{hasQuery ? "Best matches" : "Familiar songs"}</p>
