@@ -21,7 +21,9 @@ test("waits for a song choice before showing tempo matches", async ({ page }) =>
   await useCatalog(page);
   await page.goto("/");
 
-  await expect(page.locator(".source-tile strong")).toHaveText("Choose a song");
+  await expect(page.getByRole("heading", { name: /mix lyrics from one song into another/i })).toBeVisible();
+  await expect(page.locator(".hero__visual")).toHaveCount(0);
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", "/favicon.svg");
   await expect(page.locator("#matches")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Tempo matches" })).toHaveCount(0);
 
@@ -37,7 +39,7 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
   await useCatalog(page);
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: /your next song is already in time/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /mix lyrics from one song into another/i })).toBeVisible();
 
   const search = page.getByRole("textbox", { name: "Search a song or artist" });
   await search.fill("Levitating");
@@ -175,7 +177,7 @@ test("expands all search results on Enter without selecting a suggestion", async
   await expect(expandedResults).toHaveClass(/catalog-search-results--open/);
   await expect.poll(() => expandedResults.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBeforeSearch);
-  await expect(page.locator(".source-tile strong")).toHaveText("Choose a song");
+  await expect(page.locator(".hero__visual")).toHaveCount(0);
   const resultsHeading = page.locator(".catalog-search-results__heading h2");
   await expect(resultsHeading).toHaveText("Results for “Shared Groove”");
   await expect(resultsHeading).toBeVisible();

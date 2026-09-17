@@ -882,23 +882,10 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
         <section className="hero">
           <div className="hero__glow hero__glow--one" /><div className="hero__glow hero__glow--two" />
           <div className="hero__copy">
-            <p className="eyebrow"><Sparkles size={14} /> Find songs on the same beat</p>
-            <h1>Your next song<br />is already <em>in time.</em></h1>
-            <p className="hero__intro">Search or browse {songs.length.toLocaleString()} recordings by genre. We’ll find familiar songs with a similar estimated tempo—no audio, lyrics, or artwork required.</p>
+            <p className="eyebrow"><Sparkles size={14} /> Find lyrics that fit another song’s beat</p>
+            <h1>Mix lyrics from one song<br />into <em>another.</em></h1>
+            <p className="hero__intro">Search or browse {songs.length.toLocaleString()} recordings to choose the song you’re singing. We’ll find familiar tracks at a similar estimated tempo, so you can intersperse lyrics from one song into the other—from a single line to a whole verse.</p>
             <SearchBox songs={songs} onSelect={chooseSong} onSearch={showSearchResults} />
-          </div>
-
-          <div className="hero__visual" aria-label="Song matching illustration">
-            <div className="vinyl vinyl--back"><div className="vinyl__label" /></div>
-            <div className="source-tile">
-              <p>{source ? "Selected recording" : "Start here"}</p>
-              {source ? <Artwork song={source} /> : <div className="artwork artwork--large artwork--empty" aria-hidden="true"><Music2 size={24} /></div>}
-              <div><strong>{source?.title ?? "Choose a song"}</strong><span>{source?.artist ?? "Search or browse the catalog"}</span></div>
-              <div className={`source-tile__bpm ${source ? "" : "source-tile__bpm--empty"}`}><b>{source ? source.bpm.toFixed(1) : "—"}</b><small>EST. BPM</small></div>
-            </div>
-            <div className="tempo-line"><span /><i>1</i><i>2</i><i>3</i><i>4</i><span /></div>
-            <div className="surprise-tile"><span className="surprise-tile__spark">✦</span><div><small>{source ? "Closest tempo" : "Then discover"}</small><strong>{source ? matches[0]?.song.title ?? "Widen the range…" : "Songs on the same beat"}</strong><span>{source ? matches[0]?.song.artist : "Your matches will appear after you choose"}</span></div><div className="surprise-tile__match"><b>{matches[0] ? `${Math.abs(matches[0].difference).toFixed(1)}%` : "—"}</b><small>apart</small></div></div>
-            <div className="floating-note floating-note--one">♪</div><div className="floating-note floating-note--two">♫</div>
           </div>
         </section>
 
