@@ -17,6 +17,16 @@ async function useCatalog(page: Page, catalog = songs) {
   }));
 }
 
+test("packages the production catalog", async ({ request }) => {
+  const response = await request.get("/catalog/songs.v2.json");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("application/json");
+
+  const catalog = await response.json();
+  expect(catalog.version).toBe(2);
+  expect(catalog.songs).toHaveLength(50_000);
+});
+
 test("waits for a song choice before showing tempo matches", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");

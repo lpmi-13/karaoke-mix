@@ -8,6 +8,7 @@
 /data/
 /public/catalog/*
 !/public/catalog/songs.v1.json
+!/public/catalog/songs.v2.json
 
 # Test and temporary output
 /.tmp/
