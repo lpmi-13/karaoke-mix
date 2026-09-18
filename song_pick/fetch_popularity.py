@@ -7,13 +7,19 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from .config import Config
 from .db import columnar_parameters, set_stat, transaction
+from .network import (
+    LISTENBRAINZ_TOKEN_ENVIRONMENT,
+    open_popularity_url as urlopen,
+    validate_popularity_url,
+)
 
 
 TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 
 def _chunks(values: list[str], size: int):
@@ -29,27 +35,42 @@ def request_popularity(mbids: list[str], settings: dict[str, Any]) -> list[dict[
     payload = json.dumps({"recording_mbids": mbids}).encode()
     retries = int(settings["maximumRetries"])
     initial_backoff = float(settings["initialBackoffSeconds"])
+    url = str(settings["url"])
+    validate_popularity_url(url)
+    token_environment = str(settings.get("tokenEnvironment") or "")
+    if token_environment != LISTENBRAINZ_TOKEN_ENVIRONMENT:
+        raise ValueError(
+            f"tokenEnvironment must be {LISTENBRAINZ_TOKEN_ENVIRONMENT!r}"
+        )
+    if not 0 <= retries <= 10 or not 0 <= initial_backoff <= 60:
+        raise ValueError("popularity retry settings are outside their safe bounds")
     for attempt in range(retries + 1):
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": str(settings["userAgent"]),
         }
-        token_environment = str(settings.get("tokenEnvironment") or "")
-        token = os.environ.get(token_environment) if token_environment else None
+        token = os.environ.get(token_environment)
         if token:
             headers["Authorization"] = f"Token {token}"
         request = Request(
-            str(settings["url"]),
+            url,
             data=payload,
             method="POST",
             headers=headers,
         )
         try:
             with urlopen(request, timeout=60) as response:
-                result = json.load(response)
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise RuntimeError(
+                    f"ListenBrainz response exceeded {MAX_RESPONSE_BYTES} bytes"
+                )
+            result = json.loads(body)
             if not isinstance(result, list):
                 raise RuntimeError("ListenBrainz returned a non-list popularity response")
+            if len(result) > len(mbids) or any(not isinstance(item, dict) for item in result):
+                raise RuntimeError("ListenBrainz returned an invalid popularity response")
             return result
         except HTTPError as error:
             if error.code in {401, 403} and not token:
@@ -86,6 +107,8 @@ def fetch_popularity(db: Any, config: Config, refresh: bool = False) -> None:
     ]
     settings = config.popularity
     batch_size = int(settings["batchSize"])
+    if not 1 <= batch_size <= 10_000:
+        raise ValueError("popularity batch size is outside its safe bounds")
     total_batches = (len(mbids) + batch_size - 1) // batch_size
     completed = {
         row[0]

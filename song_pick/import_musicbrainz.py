@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, BinaryIO, Iterator
 
-from .archive import open_tar, regular_member_file
+from .archive import ensure_member_fits, open_tar, regular_member_file
 from .config import Config, Paths
 from .db import columnar_parameters, set_stat, transaction
 
@@ -519,6 +519,7 @@ def _extract_core_tables(archive_path: Path, work: Path) -> dict[str, Path]:
             if binary is None:
                 continue
             temporary = paths[basename].with_suffix(".tsv.tmp")
+            ensure_member_fits(member, temporary)
             print(
                 f"core extraction: extracting {basename} ({_format_bytes(member.size)})",
                 flush=True,
@@ -559,6 +560,7 @@ def _extract_genre_tables(archive_path: Path, work: Path) -> dict[str, Path]:
             if binary is None:
                 continue
             temporary = paths[basename].with_suffix(".tsv.tmp")
+            ensure_member_fits(member, temporary)
             print(
                 f"genre extraction: extracting {basename} ({_format_bytes(member.size)})",
                 flush=True,

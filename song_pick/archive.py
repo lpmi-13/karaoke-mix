@@ -3,10 +3,15 @@ from __future__ import annotations
 import contextlib
 import bz2
 import lzma
+import shutil
 import tarfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import BinaryIO
+
+
+MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024**3
+MINIMUM_FREE_BYTES_AFTER_EXTRACTION = 1024**3
 
 
 @contextlib.contextmanager
@@ -41,4 +46,18 @@ def open_tar(path: Path) -> Iterator[tarfile.TarFile]:
 def regular_member_file(archive: tarfile.TarFile, member: tarfile.TarInfo) -> BinaryIO | None:
     if not member.isfile():
         return None
+    if member.size < 0 or member.size > MAX_ARCHIVE_MEMBER_BYTES:
+        raise RuntimeError(
+            f"archive member {member.name!r} has unsafe size {member.size} bytes"
+        )
     return archive.extractfile(member)
+
+
+def ensure_member_fits(member: tarfile.TarInfo, destination: Path) -> None:
+    available = shutil.disk_usage(destination.parent).free
+    if member.size + MINIMUM_FREE_BYTES_AFTER_EXTRACTION > available:
+        raise RuntimeError(
+            f"not enough free space to extract {member.name!r}: "
+            f"need {member.size + MINIMUM_FREE_BYTES_AFTER_EXTRACTION} bytes, "
+            f"have {available}"
+        )

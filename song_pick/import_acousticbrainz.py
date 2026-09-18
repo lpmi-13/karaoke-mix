@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .archive import open_tar, regular_member_file
+from .archive import ensure_member_fits, open_tar, regular_member_file
 from .config import Config, Paths
 from .db import set_stat
 
@@ -20,6 +20,7 @@ def _extract_rhythm_csv(archive_path: Path, destination: Path) -> None:
             if binary is None:
                 continue
             found = True
+            ensure_member_fits(member, temporary)
             with binary, temporary.open("wb") as output:
                 shutil.copyfileobj(binary, output, length=1024 * 1024)
             temporary.replace(destination)

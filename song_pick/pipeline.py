@@ -10,6 +10,16 @@ from typing import Any
 from .config import Config
 
 
+def _source_fingerprint(source: object) -> dict[str, Any]:
+    # The checksum already identifies the exact input bytes. Download-size pins
+    # are a transport safeguard and must not invalidate completed import stages.
+    return {
+        key: value
+        for key, value in vars(source).items()
+        if key != "size"
+    }
+
+
 def fingerprint(config: Config, stage: str) -> str:
     source_names = {
         "import-acousticbrainz": ("acousticbrainz-rhythm",),
@@ -19,7 +29,7 @@ def fingerprint(config: Config, stage: str) -> str:
     }.get(stage, ())
     relevant: dict[str, Any] = {
         "stage": stage,
-        "sources": [config.source(name).__dict__ for name in source_names],
+        "sources": [_source_fingerprint(config.source(name)) for name in source_names],
     }
     if stage in {"import-acousticbrainz", "score-source-tempos", "score-canonical-tempos"}:
         relevant["tempo"] = config.tempo
@@ -41,7 +51,7 @@ def _compatible_fingerprints(config: Config, stage: str) -> set[str]:
         "generatedAt": config.generated_at,
         "tempo": config.tempo,
         "selection": config.selection,
-        "sources": [source.__dict__ for source in config.sources],
+        "sources": [_source_fingerprint(source) for source in config.sources],
     }
     return {hashlib.sha256(json.dumps(legacy, sort_keys=True).encode()).hexdigest()}
 

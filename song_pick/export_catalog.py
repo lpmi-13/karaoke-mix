@@ -85,6 +85,7 @@ def _sources(config: Config, paths: Paths) -> list[dict[str, object]]:
             "url": source.url,
             "snapshot": source.snapshot,
             "license": source.license,
+            "size": source.size,
             "sha256": source.sha256,
         }
         if source.name in recorded:
