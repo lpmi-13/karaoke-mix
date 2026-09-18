@@ -31,7 +31,7 @@
     "maximumRetries": 6,
     "initialBackoffSeconds": 1.0,
     "tokenEnvironment": "LISTENBRAINZ_TOKEN",
-    "userAgent": "Beatmatch catalog builder/1.0 (non-commercial offline catalog build)"
+    "userAgent": "karaoke-mix catalog builder/1.0 (non-commercial offline catalog build)"
   },
   "sources": [
     {

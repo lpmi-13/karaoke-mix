@@ -17,7 +17,7 @@ def positive_integer(value: str) -> int:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         prog="python -m song_pick",
-        description="Build the static Beatmatch BPM catalog.",
+        description="Build the static Karaoke Mix BPM catalog.",
     )
     result.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     result.add_argument("--root", type=Path, default=ROOT)

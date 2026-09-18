@@ -1,6 +1,6 @@
-# Beatmatch
+# Karaoke Mix
 
-Beatmatch is a browser-only song-tempo matcher. It loads a versioned static
+Karaoke Mix is a browser-only song-tempo matcher. It loads a versioned static
 catalog, searches it locally, and compares automatic BPM estimates in exact
 (±0.5%), flexible (±2%), and exploratory (±5%) bands. It does not fetch music
 metadata at runtime or host audio, lyrics, artwork, or provider media.

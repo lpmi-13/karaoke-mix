@@ -1066,7 +1066,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
     <div className="app-shell">
       <a className="skip-link" href="#main-content" inert={setOpen}>Skip to main content</a>
       <header className="site-header" inert={setOpen}>
-        <a className="brand" href="#main-content" aria-label="Beatmatch home"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
+        <a className="brand" href="#main-content" aria-label="Karaoke Mix home"><span className="brand__mark"><span /></span><span>karaoke-<span>mix</span></span></a>
         <nav aria-label="Main navigation"><a href="#song-picker">Discover</a><a href="#how-it-works">How it works</a><a href="#about">About</a></nav>
         <button
           className={`set-button ${setOpen ? "set-button--active" : ""}`}
@@ -1180,7 +1180,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
       </main>
 
       <footer id="about" inert={setOpen}>
-        <a className="brand" href="#main-content" aria-label="Beatmatch home"><span className="brand__mark"><span /></span><span>beat<span>match</span></span></a>
+        <a className="brand" href="#main-content" aria-label="Karaoke Mix home"><span className="brand__mark"><span /></span><span>karaoke-<span>mix</span></span></a>
         <p>Estimated tempo data from <a href="https://acousticbrainz.org/download">AcousticBrainz</a>, identity from <a href="https://musicbrainz.org/">MusicBrainz</a>, and familiarity from <a href="https://listenbrainz.org/">ListenBrainz</a>.</p>
         <span>No lyrics, audio, or provider media hosted</span>
       </footer>
@@ -1207,7 +1207,7 @@ export function App() {
   }, [attempt]);
 
   if (error) {
-    return <main className="catalog-state" role="alert"><Music2 size={34} /><h1>Catalog unavailable</h1><p>Beatmatch couldn’t load its static song catalog. {error}</p><button onClick={() => setAttempt((value) => value + 1)}><RefreshCw size={16} /> Try again</button></main>;
+    return <main className="catalog-state" role="alert"><Music2 size={34} /><h1>Catalog unavailable</h1><p>Karaoke Mix couldn’t load its static song catalog. {error}</p><button onClick={() => setAttempt((value) => value + 1)}><RefreshCw size={16} /> Try again</button></main>;
   }
   if (!songs) return <main className="catalog-state" aria-live="polite"><span className="catalog-state__spinner" /><h1>Loading song catalog…</h1></main>;
   return <CatalogApp songs={songs} />;

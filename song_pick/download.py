@@ -42,7 +42,7 @@ def download_source(source: Source, paths: Paths, retries: int = 5) -> Path:
     for attempt in range(retries + 1):
         try:
             offset = partial.stat().st_size if partial.exists() else 0
-            headers = {"User-Agent": "Beatmatch catalog builder/1.0"}
+            headers = {"User-Agent": "karaoke-mix catalog builder/1.0"}
             if offset:
                 headers["Range"] = f"bytes={offset}-"
             request = Request(source.url, headers=headers)
