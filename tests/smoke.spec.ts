@@ -237,17 +237,21 @@ test("uses exact, flexible, and exploratory thresholds", async ({ page }) => {
   await expect(page.getByText("5 tempo matches in 7 songs")).toBeVisible();
 });
 
-test("reveals additional tempo matches in a bounded scroll area", async ({ page }) => {
-  const tempoMatches = Array.from({ length: 36 }, (_, index) => ({
+function tempoCatalog(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
     id: `tempo-match-${index}`,
-    title: `Tempo Match ${String(index + 1).padStart(2, "0")}`,
+    title: `Tempo Match ${String(index + 1).padStart(3, "0")}`,
     artist: `Tempo Artist ${index + 1}`,
     genres: ["dance"],
-    bpm: 103 + (index % 5) / 100,
-    tempoQuality: 0.99 - index / 1000,
+    bpm: 103 + (index % 5) / 1000,
+    tempoQuality: 0.99 - index / 10000,
     listenerRank: index + 2,
   }));
-  await useCatalog(page, [songs[0], ...tempoMatches]);
+}
+
+test("reveals additional tempo matches in a bounded scroll area on wide viewports", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await useCatalog(page, [songs[0], ...tempoCatalog(36)]);
   await page.goto("/");
 
   const search = page.getByRole("combobox", { name: "Search a song or artist" });
@@ -291,6 +295,72 @@ test("reveals additional tempo matches in a bounded scroll area", async ({ page 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect.poll(() => reveal.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
   expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
+});
+
+test("expands tempo matches inline on narrow viewports without jumping the page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await useCatalog(page, [songs[0], ...tempoCatalog(90)]);
+  await page.goto("/");
+
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
+  await search.fill("Levitating");
+  await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
+
+  const scroller = page.getByRole("region", { name: "Tempo matches" });
+  const reveal = page.locator(".match-results-more");
+  await expect(scroller.locator(".match-card").nth(3)).toBeHidden();
+
+  const toggle = page.locator(".show-more");
+  await expect(toggle).toHaveAccessibleName("Show 87 more matches");
+  await toggle.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(150);
+
+  // The view should stay put when expanding: the page must not scroll and the
+  // already-visible preview cards must not shift under the reader.
+  const before = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    firstCardTop: document.querySelector(".match-card")!.getBoundingClientRect().top,
+  }));
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(() => reveal.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
+  await expect(scroller.locator(".match-card").nth(3)).toBeVisible();
+  // Let the reveal animation settle so the measurement reflects the final layout:
+  // poll until two consecutive height reads agree.
+  await expect.poll(async () => {
+    const first = await scroller.evaluate((element) => element.clientHeight);
+    await page.waitForTimeout(120);
+    const second = await scroller.evaluate((element) => element.clientHeight);
+    return first === second ? second : -1;
+  }, { timeout: 5000 }).toBeGreaterThan(0);
+
+  const after = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    firstCardTop: document.querySelector(".match-card")!.getBoundingClientRect().top,
+    clientHeight: document.querySelector("#tempo-match-results")!.clientHeight,
+    overflowY: getComputedStyle(document.querySelector("#tempo-match-results")!).overflowY,
+    viewportHeight: window.innerHeight,
+  }));
+
+  // A real regression jumps the page hundreds of pixels; a few px of layout
+  // rounding is not a jump.
+  expect(Math.abs(after.scrollY - before.scrollY)).toBeLessThanOrEqual(6);
+  expect(Math.abs(after.firstCardTop - before.firstCardTop)).toBeLessThanOrEqual(6);
+  // The list grows inline rather than becoming a bounded, internally scrolled box.
+  expect(after.overflowY).toBe("visible");
+  expect(after.clientHeight).toBeGreaterThan(after.viewportHeight * 0.71);
+
+  // More matches load as the page (not an inner box) scrolls toward the end.
+  expect(await page.locator(".match-card").count()).toBe(63);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    return page.locator(".match-card").count();
+  }, { timeout: 10000 }).toBe(90);
+
+  await page.getByRole("button", { name: "Show fewer matches" }).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(() => reveal.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
 });
 
 test("plays an estimated-BPM count-in", async ({ page }) => {

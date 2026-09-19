@@ -296,6 +296,7 @@ a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 3px s
 .match-results-more--open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .624s var(--search-motion), opacity .432s .072s var(--search-motion), visibility 0s; }
 .match-results-more__reveal { min-height: 0; overflow: hidden; }
 .match-results-more__reveal > .match-grid { margin-top: 18px; }
+.match-results-sentinel { height: 1px; }
 .show-more { margin: 28px auto 0; border: 1px solid var(--control-line); border-radius: 10px; background: transparent; padding: 11px 17px; display: flex; align-items: center; gap: 9px; color: #b4b4c4; cursor: pointer; }
 .show-more svg { transition: transform .25s ease; }
 .show-more[aria-expanded="true"] svg { transform: rotate(-90deg); }
@@ -388,6 +389,7 @@ footer p a { color: #c5bcff; text-decoration: underline; text-underline-offset: 
   .segmented button { flex: 1; }
   .results-meta > span { display: none; }
   .match-grid { grid-template-columns: 1fr; }
+  .match-results--open { max-height: none; overflow: visible; }
   .how-section { width: calc(100% - 32px); padding: 38px 24px; margin-bottom: 70px; }
   .steps { grid-template-columns: 1fr; }
   .steps article { min-height: 170px; }

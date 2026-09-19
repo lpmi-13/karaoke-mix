@@ -950,6 +950,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
   const matchResultsRef = useRef<HTMLDivElement>(null);
+  const matchSentinelRef = useRef<HTMLDivElement>(null);
   const searchResultsRef = useRef<HTMLElement>(null);
   const searchCloseTimerRef = useRef<number | null>(null);
   const cancelSearchScrollRef = useRef<(() => void) | null>(null);
@@ -979,6 +980,17 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
     setMatchLimit(MATCH_PREVIEW_SIZE + MATCH_PAGE_SIZE);
     matchResultsRef.current?.scrollTo({ top: 0 });
   }, [source, band]);
+  useEffect(() => {
+    const sentinel = matchSentinelRef.current;
+    if (!showAll || !sentinel || matchLimit >= matches.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setMatchLimit((current) => Math.min(current + MATCH_PAGE_SIZE, matches.length));
+      }
+    }, { rootMargin: "0px 0px 320px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [showAll, matchLimit, matches.length]);
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -1052,11 +1064,6 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
       resultsRef.current?.focus({ preventScroll: true });
     }, 100);
   }, []);
-  const loadMoreMatches = (event: React.UIEvent<HTMLDivElement>) => {
-    const list = event.currentTarget;
-    if (list.scrollHeight - list.scrollTop - list.clientHeight > 160) return;
-    setMatchLimit((current) => Math.min(current + MATCH_PAGE_SIZE, matches.length));
-  };
   const toggleMatchResults = () => {
     if (showAll) matchResultsRef.current?.scrollTo({ top: 0 });
     setShowAll((current) => !current);
@@ -1131,7 +1138,6 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
               id="tempo-match-results"
               role="region"
               aria-label="Tempo matches"
-              onScroll={loadMoreMatches}
             >
               <div className="match-grid">
                 {previewMatches.map((match, index) => <MatchCard key={match.song.id} match={match} index={index} saved={savedSongIds.has(match.song.id)} onToggle={() => toggleSaved(source.id, match.song.id)} band={band} />)}
@@ -1155,6 +1161,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
                         />
                       ))}
                     </div>
+                    <div ref={matchSentinelRef} className="match-results-sentinel" aria-hidden="true" />
                   </div>
                 </div>
               )}
