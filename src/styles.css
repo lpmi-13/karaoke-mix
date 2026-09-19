@@ -73,6 +73,11 @@ a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 3px s
 .set-button:hover, .set-button--active { border-color: rgba(201,255,105,.42); background: rgba(201,255,105,.08); }
 .set-button:focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; }
 .set-button > span { min-width: 20px; height: 20px; padding: 0 5px; border-radius: 20px; display: grid; place-items: center; color: #0b0c19; background: var(--acid); font-weight: 700; font-size: 11px; }
+/* Once scrolled with a saved set, the button pins to the viewport at its original offset. */
+.set-button--pinned { position: fixed; z-index: 60; margin: 0; background: rgba(18,20,38,.92); backdrop-filter: blur(6px); }
+.set-button--pinned:hover { background: rgba(201,255,105,.12); }
+/* Invisible stand-in that keeps the header layout unchanged while the real button is pinned. */
+.set-button--placeholder { visibility: hidden; pointer-events: none; }
 
 .set-drawer { position: fixed; inset: 0; z-index: 100; visibility: hidden; pointer-events: none; transition: visibility 0s .36s; }
 .set-drawer--open { visibility: visible; pointer-events: auto; transition-delay: 0s; }

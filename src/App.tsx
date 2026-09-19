@@ -948,6 +948,10 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const [setOpen, setSetOpen] = useState(false);
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(false);
+  const [setButtonPinned, setSetButtonPinned] = useState(false);
+  const [setButtonOffset, setSetButtonOffset] = useState<{ top: number; right: number } | null>(null);
+  const setButtonRef = useRef<HTMLButtonElement>(null);
+  const setButtonPlaceholderRef = useRef<HTMLButtonElement>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const matchResultsRef = useRef<HTMLDivElement>(null);
   const matchSentinelRef = useRef<HTMLDivElement>(null);
@@ -1005,6 +1009,35 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
     if (searchCloseTimerRef.current !== null) window.clearTimeout(searchCloseTimerRef.current);
     cancelSearchScrollRef.current?.();
   }, []);
+  const hasSavedMatches = saved.length > 0;
+  useEffect(() => {
+    // Once the user has saved matches and scrolls, pin the "My set" button to the
+    // top-right of the viewport. We measure whichever copy of the button is still in
+    // the header flow (the real button when unpinned, the invisible placeholder when
+    // pinned) so the fixed button lands at the exact offset it had before scrolling —
+    // and stays correct across viewport resizes.
+    const updateSetButtonPin = () => {
+      const slot = setButtonPlaceholderRef.current ?? setButtonRef.current;
+      if (!slot) return;
+      const rect = slot.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const right = document.documentElement.clientWidth - rect.right;
+      setSetButtonOffset((prev) =>
+        prev && Math.abs(prev.top - top) < 0.5 && Math.abs(prev.right - right) < 0.5
+          ? prev
+          : { top, right },
+      );
+      const shouldPin = hasSavedMatches && window.scrollY > 0;
+      setSetButtonPinned((prev) => (prev === shouldPin ? prev : shouldPin));
+    };
+    updateSetButtonPin();
+    window.addEventListener("scroll", updateSetButtonPin, { passive: true });
+    window.addEventListener("resize", updateSetButtonPin);
+    return () => {
+      window.removeEventListener("scroll", updateSetButtonPin);
+      window.removeEventListener("resize", updateSetButtonPin);
+    };
+  }, [hasSavedMatches]);
 
   const collapseSearchResults = (restoreSearchFocus = true) => {
     setSearchExpanded(false);
@@ -1075,8 +1108,15 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
       <header className="site-header" inert={setOpen}>
         <a className="brand" href="#main-content" aria-label="Karaoke Mix home"><span className="brand__mark"><span /></span><span>karaoke-<span>mix</span></span></a>
         <nav aria-label="Main navigation"><a href="#song-picker">Discover</a><a href="#how-it-works">How it works</a><a href="#about">About</a></nav>
+        {setButtonPinned && (
+          <button className="set-button set-button--placeholder" aria-hidden tabIndex={-1} ref={setButtonPlaceholderRef}>
+            <Headphones size={17} /> My set <span>{saved.length}</span>
+          </button>
+        )}
         <button
-          className={`set-button ${setOpen ? "set-button--active" : ""}`}
+          ref={setButtonRef}
+          className={`set-button ${setOpen ? "set-button--active" : ""} ${setButtonPinned ? "set-button--pinned" : ""}`}
+          style={setButtonPinned && setButtonOffset ? { top: setButtonOffset.top, right: setButtonOffset.right } : undefined}
           onClick={() => setSetOpen(true)}
           aria-expanded={setOpen}
           aria-controls="my-set-drawer"
