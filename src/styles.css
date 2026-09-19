@@ -79,6 +79,12 @@ a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 3px s
 /* Invisible stand-in that keeps the header layout unchanged while the real button is pinned. */
 .set-button--placeholder { visibility: hidden; pointer-events: none; }
 
+/* Floating control that jumps back to the finder once the reader reaches the tempo
+   matches. Its bottom-right inset mirrors the "My set" button's top-right inset. */
+.back-to-search { position: fixed; right: 24px; bottom: 20px; z-index: 60; width: 46px; height: 46px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--acid); color: #111321; box-shadow: 0 14px 34px rgba(201,255,105,.28), 0 3px 8px rgba(0,0,0,.35); cursor: pointer; opacity: 0; transform: translateY(14px) scale(.9); pointer-events: none; transition: opacity .28s var(--search-motion), transform .28s var(--search-motion), box-shadow .2s; }
+.back-to-search--visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.back-to-search--visible:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 18px 42px rgba(201,255,105,.34), 0 4px 10px rgba(0,0,0,.42); }
+
 .set-drawer { position: fixed; inset: 0; z-index: 100; visibility: hidden; pointer-events: none; transition: visibility 0s .36s; }
 .set-drawer--open { visibility: visible; pointer-events: auto; transition-delay: 0s; }
 .set-drawer__backdrop { position: absolute; inset: 0; background: rgba(3,4,13,.72); opacity: 0; backdrop-filter: blur(3px); transition: opacity .3s ease; }
