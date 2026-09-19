@@ -88,6 +88,46 @@ test("loads the catalog, searches title and artist, and saves a tempo match", as
   await expect(page.getByRole("option", { name: /Don't Stop Believin' Journey/ })).toBeVisible();
 });
 
+test("pins the My set button to its original top-right offset while scrolling", async ({ page }) => {
+  await useCatalog(page);
+  await page.goto("/");
+
+  const search = page.getByRole("combobox", { name: "Search a song or artist" });
+  await search.fill("Levitating");
+  await page.getByRole("option", { name: /Levitating Dua Lipa/ }).click();
+  await expect(page.getByRole("heading", { name: /Songs near 103.0 estimated BPM/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /Flexible/ }).click();
+  await page.getByRole("button", { name: /Save .+ to my set/ }).first().click();
+  const setButton = page.getByRole("button", { name: /My set 1/ });
+  await expect(setButton).toBeVisible();
+
+  // Record the natural offset while unscrolled (the button stays in the header flow).
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => setButton.evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed");
+  const before = await setButton.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return { top: Math.round(rect.top), right: Math.round(rect.right) };
+  });
+
+  // After scrolling down, the button pins to the viewport at the exact same offset.
+  await page.evaluate(() => window.scrollTo(0, 600));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await expect.poll(() => setButton.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+  const after = await setButton.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return { top: Math.round(rect.top), right: Math.round(rect.right) };
+  });
+
+  expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after.right - before.right)).toBeLessThanOrEqual(1);
+
+  // The pinned button still opens the set drawer.
+  await setButton.click();
+  await expect(page.locator("#my-set-drawer")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /My set 1/ })).toBeVisible();
+});
+
 test("groups saved matches by the song each search started with", async ({ page }) => {
   await useCatalog(page);
   await page.goto("/");
