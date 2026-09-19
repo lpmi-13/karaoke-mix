@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
+  ChevronUp,
   CircleHelp,
   Headphones,
   Library,
@@ -950,6 +951,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [setButtonPinned, setSetButtonPinned] = useState(false);
   const [setButtonOffset, setSetButtonOffset] = useState<{ top: number; right: number } | null>(null);
+  const [backToSearchVisible, setBackToSearchVisible] = useState(false);
   const setButtonRef = useRef<HTMLButtonElement>(null);
   const setButtonPlaceholderRef = useRef<HTMLButtonElement>(null);
   const resultsRef = useRef<HTMLElement>(null);
@@ -958,6 +960,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const searchResultsRef = useRef<HTMLElement>(null);
   const searchCloseTimerRef = useRef<number | null>(null);
   const cancelSearchScrollRef = useRef<(() => void) | null>(null);
+  const cancelBackScrollRef = useRef<(() => void) | null>(null);
   const matches = useMemo(() => source ? getMatches(songs, source, band) : [], [songs, source, band]);
   const songsById = useMemo(() => new Map(songs.map((song) => [song.id, song])), [songs]);
   const savedSongIds = useMemo(
@@ -1008,6 +1011,7 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   useEffect(() => () => {
     if (searchCloseTimerRef.current !== null) window.clearTimeout(searchCloseTimerRef.current);
     cancelSearchScrollRef.current?.();
+    cancelBackScrollRef.current?.();
   }, []);
   const hasSavedMatches = saved.length > 0;
   useEffect(() => {
@@ -1038,6 +1042,29 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
       window.removeEventListener("resize", updateSetButtonPin);
     };
   }, [hasSavedMatches]);
+  useEffect(() => {
+    // Reveal a "back to search" button once the reader is at or below the tempo
+    // matches, so they can jump back to the finder from anywhere in the list.
+    if (!source) {
+      setBackToSearchVisible(false);
+      return;
+    }
+    const updateBackToSearch = () => {
+      const section = resultsRef.current;
+      if (!section) return;
+      // The match section carries scroll-margin-top: 22px, so "at the element"
+      // means its top has reached the top strip of the viewport.
+      const visible = section.getBoundingClientRect().top <= 24;
+      setBackToSearchVisible((prev) => (prev === visible ? prev : visible));
+    };
+    updateBackToSearch();
+    window.addEventListener("scroll", updateBackToSearch, { passive: true });
+    window.addEventListener("resize", updateBackToSearch);
+    return () => {
+      window.removeEventListener("scroll", updateBackToSearch);
+      window.removeEventListener("resize", updateBackToSearch);
+    };
+  }, [source]);
 
   const collapseSearchResults = (restoreSearchFocus = true) => {
     setSearchExpanded(false);
@@ -1100,6 +1127,18 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
   const toggleMatchResults = () => {
     if (showAll) matchResultsRef.current?.scrollTo({ top: 0 });
     setShowAll((current) => !current);
+  };
+  const scrollToSearch = () => {
+    const searchWrap = document.getElementById("song-picker");
+    if (searchWrap) {
+      cancelBackScrollRef.current?.();
+      cancelBackScrollRef.current = animateScrollTo(searchWrap);
+    }
+    // Move focus into the finder so keyboard users aren't stranded when the
+    // button hides itself once the search scrolls back into view.
+    document
+      .querySelector<HTMLElement>(".search-box input, .genre-selection-box__current")
+      ?.focus({ preventScroll: true });
   };
 
   return (
@@ -1225,6 +1264,19 @@ function CatalogApp({ songs }: { songs: PreparedSong[] }) {
           <div className="steps"><article><span>01</span><Search size={21} /><h3>Pick a recording</h3><p>Search directly, or browse a genre ordered by song or artist.</p></article><article><span>02</span><SlidersHorizontal size={21} /><h3>Choose a range</h3><p>Compare exact, flexible, or exploratory BPM bands.</p></article><article><span>03</span><WandSparkles size={21} /><h3>Try the timing</h3><p>Use the count-in, then decide with your own ears.</p></article></div>
         </section>
       </main>
+
+      {source && (
+        <button
+          className={`back-to-search ${backToSearchVisible && !setOpen ? "back-to-search--visible" : ""}`}
+          style={setButtonOffset ? { bottom: setButtonOffset.top, right: setButtonOffset.right } : undefined}
+          onClick={scrollToSearch}
+          aria-label="Scroll back to search"
+          aria-hidden={!(backToSearchVisible && !setOpen)}
+          inert={!(backToSearchVisible && !setOpen)}
+        >
+          <ChevronUp size={22} />
+        </button>
+      )}
 
       <footer id="about" inert={setOpen}>
         <a className="brand" href="#main-content" aria-label="Karaoke Mix home"><span className="brand__mark"><span /></span><span>karaoke-<span>mix</span></span></a>
